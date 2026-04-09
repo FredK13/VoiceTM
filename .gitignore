@@ -92,6 +92,13 @@ android/app/build/
 ios/build/
 ios/Pods/
 
+# Cloudflare / local tunnel secrets
+cloudflared/
+*yapme-dev.json
+.dev.vars
+.wrangler/state/
+.wrangler/tmp/
+
 # Environment variables / secrets
 .env
 .env.*
