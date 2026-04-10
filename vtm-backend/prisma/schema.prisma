@@ -1,0 +1,267 @@
+// prisma/schema.prisma
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum VoiceStatus {
+  NONE // no voice yet
+  COLLECTING // user is recording samples
+  TRAINING // we're calling ElevenLabs to train
+  READY // elevenLabsVoiceId is ready for TTS
+  ERROR // something went wrong
+  PENDING_VERIFICATION // ElevenLabs says requires_verification=true
+}
+
+enum InviteStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+}
+
+enum ContactInviteStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+}
+
+enum RejoinInviteStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+}
+
+model ConversationInvite {
+  id String @id @default(cuid())
+
+  // who sent the request
+  fromUser   User   @relation("InviteFrom", fields: [fromUserId], references: [id], onDelete: Cascade)
+  fromUserId String
+
+  // who received the request
+  toUser   User   @relation("InviteTo", fields: [toUserId], references: [id], onDelete: Cascade)
+  toUserId String
+
+  status InviteStatus @default(PENDING)
+
+  // ✅ conversation is created ONLY when accepted
+  conversation   Conversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  conversationId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // ✅ one invite row per pair
+  @@unique([fromUserId, toUserId])
+  @@index([toUserId, status])
+  @@index([fromUserId, status])
+  @@index([conversationId])
+}
+
+model User {
+  id String @id @default(cuid())
+
+  lastSeenAt DateTime?
+
+  username     String @unique
+  usernameNorm String @unique
+
+  emailEnc  String?
+  emailHash String? @unique
+
+  passwordHash String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  elevenLabsVoiceId String?
+  voiceStatus       VoiceStatus @default(NONE)
+  voiceSampleMs     Int         @default(0)
+  avatarUrl         String?
+
+  invitesSent     ConversationInvite[] @relation("InviteFrom")
+  invitesReceived ConversationInvite[] @relation("InviteTo")
+
+  messages            Message[]
+  emojiProfile        EmojiProfile?
+  memberships         ConversationMember[]
+  passwordResetTokens PasswordResetToken[]
+
+  contactsSaved Contact[] @relation("ContactsOwner") // I saved these users
+  contactsOfMe  Contact[] @relation("ContactsContact") // users who saved me (optional but useful)
+
+  contactInvitesSent     ContactInvite[] @relation("ContactInviteFrom")
+  contactInvitesReceived ContactInvite[] @relation("ContactInviteTo")
+
+  blocksSent     Block[] @relation("Blocker")
+  blocksReceived Block[] @relation("Blocked")
+
+  rejoinInvitesSent     ConversationRejoinInvite[] @relation("RejoinFrom")
+  rejoinInvitesReceived ConversationRejoinInvite[] @relation("RejoinTo")
+
+  @@index([usernameNorm])
+  @@index([emailHash])
+  @@index([lastSeenAt])
+}
+
+model ContactInvite {
+  id String @id @default(cuid())
+
+  fromUser   User   @relation("ContactInviteFrom", fields: [fromUserId], references: [id], onDelete: Cascade)
+  fromUserId String
+
+  toUser   User   @relation("ContactInviteTo", fields: [toUserId], references: [id], onDelete: Cascade)
+  toUserId String
+
+  status ContactInviteStatus @default(PENDING)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([fromUserId, toUserId])
+  @@index([toUserId, status])
+  @@index([fromUserId, status])
+}
+
+model PasswordResetToken {
+  id     String @id @default(cuid())
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model Conversation {
+  id        String   @id @default(cuid())
+  title     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  messages  Message[]
+  avatarUrl String?
+
+  // members of the conversation (supports 2+ users)
+  members ConversationMember[]
+
+  // optional: links back to invite(s) that created it
+  invites       ConversationInvite[]
+  rejoinInvites ConversationRejoinInvite[]
+}
+
+model ConversationMember {
+  id             String       @id @default(cuid())
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  conversationId String
+
+  user   User   @relation(fields: [userId], references: [id])
+  userId String
+
+  createdAt DateTime  @default(now())
+  hiddenAt  DateTime?
+  leftAt    DateTime?
+
+  @@unique([conversationId, userId])
+  @@index([userId, leftAt])
+  @@index([conversationId, leftAt])
+}
+
+model Message {
+  id             String       @id @default(cuid())
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  conversationId String
+
+  sender   User   @relation(fields: [senderId], references: [id])
+  senderId String
+
+  text      String
+  createdAt DateTime @default(now())
+
+  audioUrl        String?
+  audioDurationMs Int?
+  readAt          DateTime?
+
+  // ✅ NEW: persists “listened” forever 
+  listenedAt DateTime?
+}
+
+model ConversationRejoinInvite {
+  id String @id @default(cuid())
+
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  conversationId String
+
+  fromUser   User   @relation("RejoinFrom", fields: [fromUserId], references: [id], onDelete: Cascade)
+  fromUserId String
+
+  toUser   User   @relation("RejoinTo", fields: [toUserId], references: [id], onDelete: Cascade)
+  toUserId String
+
+  status RejoinInviteStatus @default(PENDING)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // ✅ only one pending lane per conversation per user
+  @@unique([conversationId, toUserId])
+  @@index([toUserId, status])
+  @@index([fromUserId, status])
+  @@index([conversationId])
+}
+
+model EmojiProfile {
+  id     String @id @default(cuid())
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String @unique
+
+  // JSON like {"😂":"hahaha","🔥":"Fire!"}
+  mapping Json
+
+  updatedAt DateTime @updatedAt
+}
+
+model Contact {
+  id String @id @default(cuid())
+
+  // owner of the contact list (the user doing the saving)
+  owner   User   @relation("ContactsOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  ownerId String
+
+  // the saved user
+  contact   User   @relation("ContactsContact", fields: [contactId], references: [id], onDelete: Cascade)
+  contactId String
+
+  createdAt DateTime @default(now())
+
+  // one saved-contact per pair
+  @@unique([ownerId, contactId])
+  // fast lookups
+  @@index([ownerId])
+  @@index([contactId])
+}
+
+model Block {
+  id String @id @default(cuid())
+
+  blocker   User   @relation("Blocker", fields: [blockerId], references: [id], onDelete: Cascade)
+  blockerId String
+
+  blocked   User   @relation("Blocked", fields: [blockedId], references: [id], onDelete: Cascade)
+  blockedId String
+
+  createdAt DateTime @default(now())
+
+  @@unique([blockerId, blockedId])
+  @@index([blockerId])
+  @@index([blockedId])
+}

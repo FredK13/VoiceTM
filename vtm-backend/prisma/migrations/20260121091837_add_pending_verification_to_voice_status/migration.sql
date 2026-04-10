@@ -1,0 +1,2 @@
+-- AlterEnum
+ALTER TYPE "VoiceStatus" ADD VALUE 'PENDING_VERIFICATION';
