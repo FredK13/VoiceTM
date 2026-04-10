@@ -90,10 +90,10 @@ router.get("/:id", requireAuth, async (req, res, next) => {
           userId,
         },
       },
-      select: { id: true },
+      select: { id: true, leftAt: true },
     });
 
-    if (!membership) {
+    if (!membership || membership.leftAt) {
       // do not leak existence
       return res.status(404).json({ error: "Message not found" });
     }
@@ -149,10 +149,10 @@ router.get("/:id/audio", requireAuth, audioLimiter, async (req, res, next) => {
           userId,
         },
       },
-      select: { id: true },
+      select: { id: true, leftAt: true },
     });
 
-    if (!membership) {
+    if (!membership || membership.leftAt) {
       return res.status(404).json({ error: "Message not found" });
     }
 

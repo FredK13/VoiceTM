@@ -43,11 +43,11 @@ async function assertRoomAllowed(userId: string, roomId: string): Promise<boolea
 
     const membership = await prisma.conversationMember.findUnique({
       where: { conversationId_userId: { conversationId, userId } },
-      select: { id: true },
+      select: { id: true, leftAt: true },
     });
 
 
-    return !!membership;
+    return !!membership && !membership.leftAt;
   }
 
 
