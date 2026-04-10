@@ -78,36 +78,37 @@ function isAllowlistedPath(path: string) {
   );
 }
 
+
 function getReqHost(req: express.Request) {
   const xfHost = (req.headers["x-forwarded-host"] ?? "").toString().split(",")[0].trim();
   const host = (xfHost || req.headers.host || "").toString();
   return host.split(":")[0];
 }
 
+
 app.use((req, res, next) => {
   const enabled = process.env.DEV_GUARD_ENABLED === "true";
   if (!enabled) return next();
 
-  const guardedHosts = new Set(
-    (process.env.DEV_GUARD_HOSTS || "")
-      .split(",")
-      .map((x) => x.trim())
-      .filter(Boolean)
-  );
 
-  if (guardedHosts.size > 0) {
+  const guardHost = (process.env.DEV_GUARD_HOST || "").trim();
+  if (guardHost) {
     const reqHost = getReqHost(req);
-    if (!guardedHosts.has(reqHost)) return next();
+    if (reqHost !== guardHost) return next();
   }
+
 
   if (req.method === "OPTIONS") return next();
   if (isAllowlistedPath(req.path)) return next();
 
+
   const secret = process.env.DEV_GUARD_SECRET;
   if (!secret) return res.status(500).json({ error: "Server misconfigured" });
 
+
   const hdr = (req.headers["x-dev-guard"] ?? "").toString();
   if (hdr !== secret) return res.status(403).json({ error: "Forbidden" });
+
 
   next();
 });
