@@ -592,6 +592,49 @@ router.post("/requests/:inviteId/reject", requireAuth, convoDecisionLimiter, asy
   }
 });
 
+/**
+ * POST /api/conversations/requests/:inviteId/cancel
+ *
+ * Sender-side cancel for outgoing pending yap/chat requests.
+ * Only the original sender can cancel, and only while still PENDING.
+ */
+router.post("/requests/:inviteId/cancel", requireAuth, convoDecisionLimiter, async (req, res, next) => {
+  try {
+    const userId = requireUserId(req);
+    const inviteId = param1((req.params as any).inviteId);
+    if (!inviteId) return res.status(400).json({ error: "Invalid inviteId" });
+
+
+    const invite = await prisma.conversationInvite.findFirst({
+      where: {
+        id: inviteId,
+        fromUserId: userId,
+        status: "PENDING",
+      },
+      select: { id: true },
+    });
+
+
+    if (!invite) {
+      return res.status(404).json({ error: "Invite not found" });
+    }
+
+
+    await prisma.conversationInvite.update({
+      where: { id: invite.id },
+      data: {
+        status: "CANCELLED",
+        conversationId: null,
+      },
+    });
+
+
+    return res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
 
 /**
  * GET /api/conversations/:id/messages

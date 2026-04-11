@@ -21,18 +21,21 @@ enum InviteStatus {
   PENDING
   ACCEPTED
   REJECTED
+  CANCELLED
 }
 
 enum ContactInviteStatus {
   PENDING
   ACCEPTED
   REJECTED
+  CANCELLED
 }
 
 enum RejoinInviteStatus {
   PENDING
   ACCEPTED
   REJECTED
+  CANCELLED
 }
 
 model ConversationInvite {

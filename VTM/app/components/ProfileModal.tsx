@@ -81,6 +81,7 @@ type Props = {
   onAcceptContactRequest: (item: IncomingContactInvite) => void;
   onRejectContactRequest: (item: IncomingContactInvite) => void;
 
+  onCancelPending: (item: OutgoingNotif) => void;
 
   onPickAndUploadAvatar: () => void;
   onRemoveAvatar: () => void;
@@ -106,6 +107,7 @@ export default function ProfileModal({
   onRejectChatRequest,
   onAcceptContactRequest,
   onRejectContactRequest,
+  onCancelPending,
   onPickAndUploadAvatar,
   onRemoveAvatar,
   onOpenContacts,
@@ -267,12 +269,20 @@ export default function ProfileModal({
                 !loadingPending ? <Text style={{ paddingVertical: 10 }}>{t("common.noPending")}</Text> : null
               }
               renderItem={({ item }) => (
-                <View style={styles.pendingRowSimple}>
-                  <Text style={{ fontWeight: "900" }}>
+                <View style={styles.pendingRow}>
+                  <Text style={styles.pendingName}>
                     {item.user.username} {item.kind === "contact" ? "•" : ""}
                   </Text>
-                </View>
-              )}
+
+                    <TouchableOpacity
+                      onPress={() => onCancelPending(item)}
+                      style={styles.cancelPendingBtn}
+                      activeOpacity={0.85}
+                    >
+                      <Text style={styles.cancelPendingBtnText}>{t("common.cancel")}</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
             />
           </View>
 
@@ -460,11 +470,36 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
   },
 
-
-  pendingRowSimple: {
+  
+  pendingRow: {
     paddingVertical: 10,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: "rgba(0,0,0,0.12)",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+  },
+
+
+  pendingName: {
+    fontWeight: "900",
+    flex: 1,
+  },
+
+
+  cancelPendingBtn: {
+    backgroundColor: "#111",
+    paddingVertical: 7,
+    paddingHorizontal: 12,
+    borderRadius: 999,
+  },
+
+
+  cancelPendingBtnText: {
+    color: "white",
+    fontWeight: "900",
+    fontSize: 12,
   },
 
 

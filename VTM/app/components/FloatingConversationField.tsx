@@ -21,8 +21,9 @@ const TOP_BOUNDARY = height * 0.1;
 const BOTTOM_BOUNDARY = height * 0.88;
 
 
-const INNER = 0.82;
-const AVATAR_PAD = 4;
+const INNER = 0.77;
+const OFFLINE_RING_WIDTH = 4;
+const ONLINE_RING_WIDTH = 4;
 
 
 const GLASS_COLORS = [
@@ -228,35 +229,57 @@ export default function FloatingConversationField({
             >
               {b.avatarUrl ? (
                 <View
-                  style={{
-                    width: innerSize,
-                    height: innerSize,
-                    borderRadius: innerSize / 2,
-                    alignItems: "center",
-                    justifyContent: "center",
-                    overflow: "visible",
-                    position: "relative",
-                  }}
-                >
-                  {bubbleOnline && <View style={styles.bubbleOnlineOverlay} />}
+  style={{
+    width: innerSize,
+    height: innerSize,
+    borderRadius: innerSize / 2,
+    alignItems: "center",
+    justifyContent: "center",
+  }}
+>
+  <View
+    style={[
+      {
+        width: innerSize,
+        height: innerSize,
+        borderRadius: innerSize / 2,
+        overflow: "hidden",
+        alignItems: "center",
+        justifyContent: "center",
+      },
+      bubbleOnline
+        ? { backgroundColor: "#00d13b", padding: ONLINE_RING_WIDTH }
+        : null,
+    ]}
+  >
+    {!bubbleOnline && (
+      <>
+        <LinearGradient colors={GLASS_COLORS} style={StyleSheet.absoluteFill} />
+        <LinearGradient colors={HIGHLIGHT_COLORS} style={StyleSheet.absoluteFill} />
+      </>
+    )}
 
 
-                  <View
-                    style={[
-                      styles.bubbleAvatarWrap,
-                      {
-                        width: innerSize,
-                        height: innerSize,
-                        borderRadius: innerSize / 2,
-                        padding: AVATAR_PAD,
-                      },
-                    ]}
-                  >
-                    <LinearGradient colors={GLASS_COLORS} style={StyleSheet.absoluteFill} />
-                    <LinearGradient colors={HIGHLIGHT_COLORS} style={StyleSheet.absoluteFill} />
-                    <Image source={{ uri: b.avatarUrl }} style={styles.bubbleAvatarImage} />
-                  </View>
-                </View>
+    <View
+      style={[
+        styles.bubbleAvatarInner,
+        {
+          width: innerSize - (bubbleOnline ? ONLINE_RING_WIDTH * 2 : OFFLINE_RING_WIDTH * 2),
+          height: innerSize - (bubbleOnline ? ONLINE_RING_WIDTH * 2 : OFFLINE_RING_WIDTH * 2),
+          borderRadius:
+            (innerSize - (bubbleOnline ? ONLINE_RING_WIDTH * 2 : OFFLINE_RING_WIDTH * 2)) / 2,
+        },
+        !bubbleOnline && {
+          overflow: "hidden",
+        },
+      ]}
+    >
+      <Image source={{ uri: b.avatarUrl }} style={styles.bubbleAvatarImage} />
+    </View>
+  </View>
+</View>
+
+
               ) : (
                 <View
                   style={[
@@ -296,11 +319,16 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
 
+  bubbleAvatarInner: {
+    alignItems: "center",
+    justifyContent: "center",
+    overflow: "hidden",
+  },
 
   bubbleAvatarImage: {
     width: "100%",
     height: "100%",
-    resizeMode: "contain",
+    resizeMode: "cover",
     borderRadius: 999,
   },
 
@@ -318,19 +346,4 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
     textAlign: "center",
   },
-
-
-  bubbleOnlineOverlay: {
-  position: "absolute",
-  top: -5,
-  left: -5,
-  right: -5,
-  bottom: -5,
-  borderRadius: 999,
-  borderWidth: 5,
-  borderColor: "#00d13b",
-  backgroundColor: "transparent",
-  pointerEvents: "none",
-  zIndex: 3,
-},
 });

@@ -181,8 +181,35 @@ router.post("/requests/:id/accept", requireAuth, rejoinLimiter, async (req, res,
     });
     if (!inv) return res.status(404).json({ error: "Invite not found" });
 
+    const [conversation, accepterMembership] = await Promise.all([
+  prisma.conversation.findUnique({
+    where: { id: inv.conversationId },
+    select: { id: true },
+  }),
+  prisma.conversationMember.findUnique({
+    where: {
+      conversationId_userId: {
+        conversationId: inv.conversationId,
+        userId: inv.toUserId,
+      },
+    },
+    select: { id: true, leftAt: true },
+  }),
+]);
+
+
+if (!conversation) {
+  return res.status(404).json({ error: "Conversation not found" });
+}
+
+
+if (!accepterMembership || accepterMembership.leftAt) {
+  return res.status(409).json({ error: "Conversation is no longer active" });
+}
+
 
     await prisma.$transaction(async (tx) => {
+
       await tx.conversationRejoinInvite.update({
         where: { id: inv.id },
         data: { status: "ACCEPTED" },

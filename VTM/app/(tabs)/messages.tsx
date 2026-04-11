@@ -12,7 +12,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { apiFetch, apiJson, API_BASE, isApiError} from "../../lib/api";
+import { apiFetch, apiJson, isApiError} from "../../lib/api";
 import { getUserId } from "../../lib/session";
 import { useTranslation } from "react-i18next";
 import type {
@@ -39,6 +39,10 @@ import FloatingConversationField, { type MovingBubble} from "../components/Float
 import ChatOverlay, { type ChatOverlayMessage } from "../components/ChatOverlay";
 import useChatAudio from "../hooks/useChatAudio";
 import useConversationRealtime from "../hooks/useConversationRealtime";
+import type { OutgoingNotif } from "../hooks/useProfileInbox";
+import { mapApiMessageToChatMessage,
+         sortChatMessagesByCreatedAt
+       } from "../utils/chatMessageMapper";
 
 
 const { height } = Dimensions.get("window");
@@ -380,56 +384,19 @@ const {
 
     try {
       const raw = await apiJson<any[]>(`/api/conversations/${bubble.id}/messages`);
+
       const msgs: ChatMessage[] = Array.isArray(raw)
-        ? raw.map((m: any) => {
-          const streamUrl = m.audioUrl ? `${API_BASE}/api/messages/${m.id}/audio` : null;
-          const senderId = String(m.senderId ?? "");
-
-          const readAt = m.readAt ?? null;
-          const listenedAt = m.listenedAt ?? null;
-
-          const isMine = !!myUserId && senderId === myUserId;
- 
-          return {
-            id: String(m.id),
-            senderId,
-            isMine,
-            text: String(m.text ?? ""),
-            createdAt: m.createdAt,
-            audioUrl: streamUrl,
-            audioDurationMs: m.audioDurationMs ?? null,
-
-            // ✅ persist fields from backend
-             readAt,
-            listenedAt,
-
-            // ✅ show MY receipts based on persisted DB values
-            receipt: isMine ? (listenedAt ? "listened" : "posted") : undefined,
-          } as ChatMessage;
-          })
+        ? raw.map((m: any) => mapApiMessageToChatMessage(m, myUserId))
         : [];
 
+    const unique = uniqByIdKeepOrder(msgs);
+    const sorted = sortChatMessagesByCreatedAt(unique);
+    setChatMessages(sorted);
 
-      // Ensure unique + stable order
-      const unique = uniqByIdKeepOrder(msgs);
-      unique.sort((a, b) => {
-        const ta = a.createdAt ? Date.parse(a.createdAt) : 0;
-        const tb = b.createdAt ? Date.parse(b.createdAt) : 0;
-        return ta - tb;
-      });
+    const newestUnread = [...sorted]
+      .filter((m) => !m.isMine && !!m.audioUrl && !m.listenedAt)
+      .pop();
 
-
-      setChatMessages(unique);
-
-
-      const newestUnread = [...unique]
-  .filter((m) => !m.isMine && !!m.audioUrl && !m.listenedAt)
-  .sort((a, b) => {
-    const ta = a.createdAt ? Date.parse(a.createdAt) : 0;
-    const tb = b.createdAt ? Date.parse(b.createdAt) : 0;
-    return ta - tb;
-  })
-  .pop();
 
 
   if (newestUnread) playMessageAudio(newestUnread, bubble.id, true);
@@ -474,31 +441,13 @@ const {
 
       const savedId = String(saved.id);
       const senderId = String(saved.senderId ?? myUserId ?? "me");
-      const streamUrl = saved.audioUrl ? `${API_BASE}/api/messages/${savedId}/audio` : null;
-
-
-      const finalMsg: ChatMessage = {
-        id: savedId,
-        senderId,
-        isMine: !!myUserId && senderId === myUserId,
-        text: String(saved.text ?? text),
-        createdAt: saved.createdAt,
-        audioUrl: streamUrl,
-        audioDurationMs: saved.audioDurationMs ?? null,
-        readAt: saved.readAt ?? null,
-        receipt: "posted",
-      };
+      const finalMsg: ChatMessage = mapApiMessageToChatMessage(saved, myUserId);
 
 
       // Replace optimistic temp message
       setChatMessages((prev) => {
         const next = prev.map((m) => (m.id === tempId ? finalMsg : m));
-        next.sort((a, b) => {
-          const ta = a.createdAt ? Date.parse(a.createdAt) : 0;
-          const tb = b.createdAt ? Date.parse(b.createdAt) : 0;
-          return ta - tb;
-        });
-        return next;
+        return sortChatMessagesByCreatedAt(next);
       });
 
 
@@ -642,6 +591,35 @@ async function acceptChatRequest(item: IncomingInvite | IncomingRejoinInvite | a
     }
   }
 
+async function cancelPendingRequest(item: OutgoingNotif) {
+  try {
+    if (item.kind === "chat") {
+      const raw = item.raw as any;
+
+
+      if (raw?.kind === "rejoin") {
+        await apiFetch(`/api/rejoin/requests/${item.id}/cancel`, { method: "POST" });
+        await refreshChatOutgoing();
+        await refreshChatRequests();
+        return;
+      }
+
+      await apiFetch(`/api/conversations/requests/${item.id}/cancel`, { method: "POST" });
+      await refreshChatOutgoing();
+      await refreshChatRequests();
+      return;
+    }
+
+    await apiFetch(`/api/contacts/requests/${item.id}/cancel`, { method: "POST" });
+    await refreshContactOutgoing();
+    await refreshContactRequests();
+  } catch (err: any) {
+    Alert.alert(
+      t("common.cancelFailed"),
+      err?.message ?? t("common.requestFailed")
+    );
+  }
+}
 
   // Compute a simple "is the other user online?" from room presence
   const otherUserId = activeConversation?.otherUserId ?? null;
@@ -827,6 +805,7 @@ async function acceptChatRequest(item: IncomingInvite | IncomingRejoinInvite | a
   onRejectChatRequest={rejectChatRequest}
   onAcceptContactRequest={acceptContactRequest}
   onRejectContactRequest={rejectContactRequest}
+  onCancelPending={cancelPendingRequest}
   onPickAndUploadAvatar={() => {
     pickAndUploadAvatar().catch(() => {});
   }}

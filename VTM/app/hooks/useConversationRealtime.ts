@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { apiJson, API_BASE } from "../../lib/api";
+import { apiJson, } from "../../lib/api";
 import {
   connectRealtime,
   roomForConversation,
@@ -9,6 +9,7 @@ import {
 } from "../../lib/realtime";
 import type { Conversation } from "../../lib/types";
 import type { ChatOverlayMessage } from "../components/ChatOverlay";
+import { mapApiMessageToChatMessage, sortChatMessagesByCreatedAt } from "../utils/chatMessageMapper";
 
 
 type WsMsgNew = {
@@ -168,35 +169,16 @@ export function useConversationRealtime({
             setChatMessages((prev) => {
               if (prev.some((x) => x.id === messageId)) return prev;
 
+              const incoming = mapApiMessageToChatMessage(
+                {
+                  ...m,
+                  id: messageId,
+                  senderId: m.senderId ?? p.senderId ?? "",
+                },
+                myUserId
+              );
 
-              const senderId = String(m.senderId ?? p.senderId ?? "");
-              const streamUrl = m.audioUrl ? `${API_BASE}/api/messages/${messageId}/audio` : null;
-              const isMine = !!myUserId && senderId === myUserId;
-              const readAt = m.readAt ?? null;
-              const listenedAt = m.listenedAt ?? null;
-
-
-              const incoming: ChatOverlayMessage = {
-                id: messageId,
-                senderId,
-                isMine,
-                text: String(m.text ?? ""),
-                createdAt: m.createdAt,
-                audioUrl: streamUrl,
-                audioDurationMs: m.audioDurationMs ?? null,
-                readAt,
-                listenedAt,
-                receipt: isMine ? (listenedAt ? "listened" : "posted") : undefined,
-              };
-
-
-              const next = [...prev, incoming];
-              next.sort((a, b) => {
-                const ta = a.createdAt ? Date.parse(a.createdAt) : 0;
-                const tb = b.createdAt ? Date.parse(b.createdAt) : 0;
-                return ta - tb;
-              });
-              return next;
+              return sortChatMessagesByCreatedAt([...prev, incoming]);
             });
 
 
