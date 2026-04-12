@@ -90,7 +90,6 @@
     "receiptListened": "listened",
     "receiptIndicator": "yappin...",
     "unknownUser": "Unknown"
-
   },
 
   "settings": {
@@ -141,7 +140,10 @@
   "notFound": "Not found.",
   "rateLimited": "Too many requests. Try again soon.",
   "serverError": "Server error. Try again later.",
-  "rejoinPending": "This chat is waiting on a rejoin request."
+  "rejoinPending": "This chat is waiting on a rejoin request.",
+  "chatRequestCancelInvalid": "That chat request is no longer pending.",
+  "rejoinRequestCancelInvalid": "That rejoin request is no longer pending.",
+  "contactRequestCancelInvalid": "That contact request is no longer pending."
 },
 
 "language": {

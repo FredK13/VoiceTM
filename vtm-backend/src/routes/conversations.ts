@@ -616,7 +616,10 @@ router.post("/requests/:inviteId/cancel", requireAuth, convoDecisionLimiter, asy
 
 
     if (!invite) {
-      return res.status(404).json({ error: "Invite not found" });
+      return res.status(404).json({ 
+        error: "Invite not found",
+        code: "CHAT_REQUEST_CANCEL_INVALID",
+       });
     }
 
 

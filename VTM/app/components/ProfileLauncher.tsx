@@ -93,8 +93,8 @@ const styles = StyleSheet.create({
 
 
   profileOuterBubble: {
-    width: 60,
-    height: 60,
+    width: 63,
+    height: 63,
     borderRadius: 999,
     alignItems: "center",
     justifyContent: "center",
@@ -106,7 +106,7 @@ const styles = StyleSheet.create({
     width: 55,
     height: 55,
     borderRadius: 999,
-    backgroundColor: "rgba(255,255,255,0.65)",
+    backgroundColor: "rgba(255, 255, 255, 0.7)",
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",

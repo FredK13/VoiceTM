@@ -564,5 +564,45 @@ router.post("/requests/:inviteId/reject", contactDecisionLimiter, async (req, re
   }
 });
 
+/**
+ * POST /api/contacts/requests/:id/cancel
+ * Cancel my own outgoing pending contact invite
+ */
+router.post("/requests/:id/cancel", requireAuth, contactDecisionLimiter, async (req, res, next) => {
+  try {
+    const userId = requireUserId(req);
+    const id = String((req.params as any).id || "").trim();
+    if (!id) return res.status(400).json({ error: "Invalid id" });
+
+
+    const invite = await prisma.contactInvite.findFirst({
+      where: {
+        id,
+        fromUserId: userId,
+        status: "PENDING",
+      },
+      select: { id: true },
+    });
+
+
+    if (!invite) return res.status(404).json({ 
+      error: "Invite not found",
+      code: "CONTACT_REQUEST_CANCEL_INVALID",
+     });
+
+
+    await prisma.contactInvite.update({
+      where: { id: invite.id },
+      data: { status: "CANCELLED" },
+    });
+
+
+    return res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+
 
 export default router;

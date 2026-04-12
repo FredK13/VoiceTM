@@ -274,6 +274,43 @@ router.post("/requests/:id/reject", requireAuth, rejoinLimiter, async (req, res,
   }
 });
 
+// ✅ Cancel outgoing rejoin
+router.post("/requests/:id/cancel", requireAuth, rejoinLimiter, async (req, res, next) => {
+  try {
+    const userId = requireUserId(req);
+    const id = String((req.params as any).id || "").trim();
+    if (!id) return res.status(400).json({ error: "Invalid id" });
+
+
+    const inv = await prisma.conversationRejoinInvite.findFirst({
+      where: {
+        id,
+        fromUserId: userId,
+        status: "PENDING",
+      },
+      select: { id: true },
+    });
+
+
+    if (!inv) return res.status(404).json({ 
+      error: "Invite not found",
+      code: "REJOIN_REQUEST_CANCEL_INVALID",
+     });
+
+
+    await prisma.conversationRejoinInvite.update({
+      where: { id: inv.id },
+      data: { status: "CANCELLED" },
+    });
+
+
+    return res.json({ ok: true });
+  } catch (e) {
+    next(e);
+  }
+});
+
+
 
 export default router;
 

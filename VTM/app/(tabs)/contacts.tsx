@@ -25,6 +25,8 @@ import type {
   PresenceBatchResponse,
 } from "../../lib/types";
 import { usePresence } from "../../lib/presence";
+import ContactsBlockedList from "../components/contactsComponents/ContactsBlockedList";
+import ContactsSettings from "../components/contactsComponents/ContactsSettings";
 
 
 const { width } = Dimensions.get("window");
@@ -205,9 +207,9 @@ export default function ContactsScreen() {
         <Text style={styles.title}>{t("common.contacts")}</Text>
 
 
-        <View style={{ flexDirection: "row", gap: 10 }}>
+        <View style={styles.headerButtonsRow}>
           <GlassPill onPress={() => setAddOpen(true)} label="+" />
-          <GlassPill onPress={() => router.back()} label={t("common.back")} />
+          <GlassPill onPress={() => router.push("/messages")} label={t("common.back")} />
         </View>
       </View>
 
@@ -247,41 +249,29 @@ export default function ContactsScreen() {
 
 
             return (
-              <View style={{ width: BUBBLE, alignItems: "center" }}>
+              <View style={styles.contactItem}>
                 <TouchableOpacity
                   activeOpacity={0.9}
                   onLongPress={() => onLongPressContact(u)}
                   delayLongPress={600}
                 >
                   <View
-                    style={{
-                      width: BUBBLE,
-                      height: BUBBLE,
-                      borderRadius: BUBBLE / 2,
-                      overflow: "hidden",
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
+                    style={styles.contactBubbleOuter}
                   >
                     <LinearGradient colors={GLASS_COLORS} style={StyleSheet.absoluteFill} />
                     <LinearGradient colors={HIGHLIGHT_COLORS} style={StyleSheet.absoluteFill} />
 
 
                     <View
-                      style={{
-                        width: innerSize,
-                        height: innerSize,
-                        borderRadius: innerSize / 2,
-                        overflow: "hidden",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        backgroundColor: "rgba(255, 255, 255, 0.6)",
-                      }}
+                      style={[ 
+                        styles.contactBubbleInner,                
+                        { width: innerSize, height: innerSize, borderRadius: innerSize / 2, }
+                      ]}
                     >
                       {u.avatarUrl ? (
                         <Image
                           source={{ uri: u.avatarUrl }}
-                          style={{ width: "100%", height: "100%", borderRadius: 999 }}
+                          style={styles.contactAvatarImage}
                         />
                       ) : (
                         <Text style={styles.fallbackLetter}>{initialFromUsername(u.username, "Y")}</Text>
@@ -309,6 +299,19 @@ export default function ContactsScreen() {
         />
       </View>
 
+      <View style={styles.bottomButtonsRow}>
+        <ContactsBlockedList
+          onPress={() => {
+            Alert.alert("Blocked list", "Coming soon");
+          }}
+        />
+        <ContactsSettings
+          onPress={() => {
+            Alert.alert("Contacts settings", "Coming soon");
+          }}
+        />
+      </View>
+       
 
       <Modal visible={addOpen} transparent animationType="fade" onRequestClose={() => setAddOpen(false)}>
         <View style={styles.modalBackdrop}>
@@ -337,12 +340,8 @@ export default function ContactsScreen() {
                 onPress={() => setAddOpen(false)}
                 style={[
                   styles.smallBtn,
-                  {
-                    backgroundColor: "rgb(0, 0, 0)",
-                    borderColor: "rgb(255, 255, 255)",
-                    borderWidth: 1,
-                    opacity: sending ? 0.6 : 1,
-                  },
+                  styles.cancelBtn,
+                  { opacity: sending ? 0.6 : 1 },
                 ]}
               >
                 <Text style={styles.smallBtnText}>{t("common.cancel")}</Text>
@@ -355,12 +354,8 @@ export default function ContactsScreen() {
                 disabled={sending}
                 style={[
                   styles.smallBtn,
-                  {
-                    backgroundColor: "#00a82f",
-                    borderColor: "rgb(255, 255, 255)",
-                    borderWidth: 1,
-                    opacity: sending ? 0.6 : 1,
-                  },
+                  styles.sendBtn,
+                  { opacity: sending ? 0.6 : 1 },
                 ]}
               >
                 <Text style={styles.smallBtnText}>
@@ -388,12 +383,26 @@ function GlassPill({ label, onPress }: { label: string; onPress: () => void }) {
 
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#ff0015ff", paddingTop: 60, paddingHorizontal: 18 },
+  container: { 
+    flex: 1, 
+    backgroundColor: "#ff0015ff", 
+    paddingTop: 60, 
+    paddingHorizontal: 18, 
+  },
 
+  header: { 
+    flexDirection: "row", 
+    alignItems: "center", 
+    justifyContent: "space-between", 
+    marginBottom: 14, 
+  },
 
-  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 14 },
-  title: { fontSize: 26, fontWeight: "900", color: "#fffffffa", letterSpacing: 0.3 },
-
+  title: { 
+    fontSize: 26, 
+    fontWeight: "900", 
+    color: "#fffffffa", 
+    letterSpacing: 0.3, 
+  },
 
   glassPill: {
     height: 40,
@@ -403,8 +412,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  glassPillText: { color: "#ff0015ff", fontWeight: "900", fontSize: 16 },
 
+  glassPillText: { 
+    color: "#ff0015ff", 
+    fontWeight: "900", 
+    fontSize: 16, 
+  },
 
   card: {
     borderRadius: 22,
@@ -416,10 +429,17 @@ const styles = StyleSheet.create({
     height: "82%",
   },
 
+  cardHeaderRow: { 
+    flexDirection: "row", 
+    justifyContent: "space-between", 
+    alignItems: "center", 
+  },
 
-  cardHeaderRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  bigText: { fontSize: 18, fontWeight: "900", color: "#ffffff" },
-
+  bigText: { 
+    fontSize: 18, 
+    fontWeight: "900", 
+    color: "#ffffff", 
+  },
 
   fallbackLetter: {
     color: "white",
@@ -430,7 +450,6 @@ const styles = StyleSheet.create({
     includeFontPadding: false,
   },
 
-
   usernameRow: {
     marginTop: 6,
     flexDirection: "row",
@@ -438,6 +457,7 @@ const styles = StyleSheet.create({
     gap: 6,
     maxWidth: BUBBLE,
   },
+
   presenceDotLeft: {
     width: 9,
     height: 9,
@@ -445,11 +465,17 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: "rgba(255,255,255,0.85)",
   },
-  usernameText: { color: "rgba(255,255,255,0.95)", fontWeight: "900", flexShrink: 1 },
+  usernameText: { 
+    color: "rgba(255,255,255,0.95)", 
+    fontWeight: "900", 
+    flexShrink: 1, 
+  },
 
-
-  emptyText: { color: "rgba(255,255,255,0.9)", fontWeight: "800", paddingTop: 10 },
-
+  emptyText: { 
+    color: "rgba(255,255,255,0.9)", 
+    fontWeight: "800", 
+    paddingTop: 10,
+  },
 
   modalBackdrop: {
     flex: 1,
@@ -458,7 +484,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     paddingHorizontal: 18,
   },
-
 
   modalCard: {
     width: "100%",
@@ -469,10 +494,17 @@ const styles = StyleSheet.create({
     borderColor: "rgb(255, 255, 255)",
   },
 
+  modalTitle: { 
+    fontSize: 18, 
+    fontWeight: "900", 
+    color: "#ffffff", 
+  },
 
-  modalTitle: { fontSize: 18, fontWeight: "900", color: "#ffffff" },
-  modalSubtitle: { marginTop: 6, color: "#ffffff", fontWeight: "700" },
-
+  modalSubtitle: { 
+    marginTop: 6, 
+    color: "#ffffff", 
+    fontWeight: "700", 
+  },
 
   input: {
     marginTop: 10,
@@ -485,8 +517,73 @@ const styles = StyleSheet.create({
     color: "#ffffff",
   },
 
+  modalButtonsRow: { 
+    flexDirection: "row", 
+    gap: 10, 
+    marginTop: 12, 
+    justifyContent: "flex-end", 
+  },
 
-  modalButtonsRow: { flexDirection: "row", gap: 10, marginTop: 12, justifyContent: "flex-end" },
-  smallBtn: { paddingVertical: 10, paddingHorizontal: 14, borderRadius: 12 },
-  smallBtnText: { color: "white", fontWeight: "900" },
+  smallBtn: { 
+    paddingVertical: 10, 
+    paddingHorizontal: 14, 
+    borderRadius: 12,
+},
+
+  smallBtnText: { 
+    color: "#ffffff", 
+    fontWeight: "900", 
+  },
+
+  headerButtonsRow: { 
+    flexDirection: "row", 
+    gap: 10,
+  },
+
+  contactItem: { 
+    width: BUBBLE, 
+    alignItems: "center", 
+  },
+
+  contactBubbleOuter: { 
+    width: BUBBLE,
+    height: BUBBLE,
+    borderRadius: BUBBLE / 2,
+    overflow: "hidden", 
+    alignItems: "center", 
+    justifyContent: "center", 
+  },
+
+  contactBubbleInner: { 
+    overflow: "hidden",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255, 255, 255, 0.6)",
+  },
+
+  contactAvatarImage: {
+    width: "100%", 
+    height: "100%", 
+    borderRadius: 999
+  },
+
+  cancelBtn: {
+    backgroundColor: "rgb(0, 0, 0)",
+    borderColor: "rgb(255, 255, 255)",
+    borderWidth: 1,
+  },
+
+  sendBtn: {
+    backgroundColor: "#00a82f",
+    borderColor: "rgb(255, 255, 255)",
+    borderWidth: 1,
+  },
+
+  bottomButtonsRow: {
+    flexDirection: "row",
+    justifyContent: "center",
+    gap: 100,
+    marginTop: 20,
+  },
+ 
 });

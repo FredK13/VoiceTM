@@ -97,6 +97,13 @@ function safeUserMessage(status: number, payload: any): string {
   switch (code) {
     case "REJOIN_PENDING":
       return i18n.t("errors.rejoinPending");
+    case "CHAT_REQUEST_CANCEL_INVALID":
+      return i18n.t("errors.chatRequestCancelInvalid");
+    case "REJOIN_REQUEST_CANCEL_INVALID":
+      return i18n.t("errors.rejoinRequestCancelInvalid");
+    case "CONTACT_REQUEST_CANCEL_INVALID":
+      return i18n.t("errors.contactRequestCancelInvalid");
+      
     default:
       return defaultMessageForStatus(status);
   }

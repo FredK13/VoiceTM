@@ -271,7 +271,7 @@ export default function ProfileModal({
               renderItem={({ item }) => (
                 <View style={styles.pendingRow}>
                   <Text style={styles.pendingName}>
-                    {item.user.username} {item.kind === "contact" ? "•" : ""}
+                    {item.user.username} 
                   </Text>
 
                     <TouchableOpacity

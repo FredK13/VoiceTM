@@ -440,7 +440,6 @@ const {
 
 
       const savedId = String(saved.id);
-      const senderId = String(saved.senderId ?? myUserId ?? "me");
       const finalMsg: ChatMessage = mapApiMessageToChatMessage(saved, myUserId);
 
 
@@ -460,7 +459,7 @@ const {
         type: "msg:new",
         convoId,
         messageId: savedId,
-        senderId,
+        senderId: String(saved.senderId ?? myUserId ?? "me"),
         createdAt: finalMsg.createdAt,
       } satisfies WsMsgNew);
       }
@@ -615,7 +614,7 @@ async function cancelPendingRequest(item: OutgoingNotif) {
     await refreshContactRequests();
   } catch (err: any) {
     Alert.alert(
-      t("common.cancelFailed"),
+      t("common.errorTitle"),
       err?.message ?? t("common.requestFailed")
     );
   }
