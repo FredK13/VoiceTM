@@ -2,6 +2,7 @@
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
+import useRefreshOnFocus from "../hooks/useRefreshOnFocus";
 import {
   Alert,
   Dimensions,
@@ -40,9 +41,7 @@ import ChatOverlay, { type ChatOverlayMessage } from "../components/ChatOverlay"
 import useChatAudio from "../hooks/useChatAudio";
 import useConversationRealtime from "../hooks/useConversationRealtime";
 import type { OutgoingNotif } from "../hooks/useProfileInbox";
-import { mapApiMessageToChatMessage,
-         sortChatMessagesByCreatedAt
-       } from "../utils/chatMessageMapper";
+import { mapApiMessageToChatMessage, sortChatMessagesByCreatedAt } from "../utils/chatMessageMapper";
 
 
 const { height } = Dimensions.get("window");
@@ -152,6 +151,8 @@ export default function MessagesScreen() {
   refreshConversations,
   refreshMe,
 });
+
+useRefreshOnFocus (refreshAllProfileInbox);
 
 const {
   wsRef,

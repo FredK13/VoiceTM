@@ -1,5 +1,6 @@
 // (tabs)/contacts.tsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
+
 import {
   View,
   Text,
@@ -14,24 +15,24 @@ import {
   Dimensions,
   RefreshControl,
 } from "react-native";
+
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { apiFetch, apiJson } from "../../lib/api";
 import { useTranslation } from "react-i18next";
+
 import type {
-  ContactsResponse,
-  ContactRow,
-  ContactRequestResponse,
-  PresenceBatchResponse,
+  ContactsResponse, ContactRow, ContactRequestResponse, PresenceBatchResponse,
 } from "../../lib/types";
+
 import { usePresence } from "../../lib/presence";
 import ContactsBlockedList from "../components/contactsComponents/ContactsBlockedList";
 import ContactsSettings from "../components/contactsComponents/ContactsSettings";
 
 
 const { width } = Dimensions.get("window");
-const BUBBLE = Math.min(92, Math.max(66, width * 0.22));
-const RING = 2;
+const BUBBLE = Math.min(92, Math.max(66, width * 0.18));
+const RING = 4;
 
 
 const GLASS_COLORS = ["rgba(255, 255, 255, 0.7)", "rgba(180,220,255,0.5)"] as const;
@@ -256,18 +257,31 @@ export default function ContactsScreen() {
                   delayLongPress={600}
                 >
                   <View
-                    style={styles.contactBubbleOuter}
+                    style={[
+                      styles.contactBubbleOuter,
+                      online ? styles.contactBubbleOuterOnline : null,
+                    ]}
                   >
-                    <LinearGradient colors={GLASS_COLORS} style={StyleSheet.absoluteFill} />
-                    <LinearGradient colors={HIGHLIGHT_COLORS} style={StyleSheet.absoluteFill} />
+                    {!online && (
+                      <>
+                        <LinearGradient colors={GLASS_COLORS} 
+                          style={StyleSheet.absoluteFill} />
+                        <LinearGradient colors={HIGHLIGHT_COLORS} 
+                          style={StyleSheet.absoluteFill} />
+                      </>
+                    )}
 
+                  <View
+                    style={[
+                        styles.contactBubbleInner,
+                      {
+                        width: innerSize,
+                        height: innerSize,
+                        borderRadius: innerSize / 2,
+                      },
+                    ]}
+                  > 
 
-                    <View
-                      style={[ 
-                        styles.contactBubbleInner,                
-                        { width: innerSize, height: innerSize, borderRadius: innerSize / 2, }
-                      ]}
-                    >
                       {u.avatarUrl ? (
                         <Image
                           source={{ uri: u.avatarUrl }}
@@ -281,17 +295,6 @@ export default function ContactsScreen() {
                 </TouchableOpacity>
 
 
-                <View style={styles.usernameRow}>
-                  <View
-                    style={[
-                      styles.presenceDotLeft,
-                      { backgroundColor: online ? "#00d13b" : "rgba(0,0,0,0.35)" },
-                    ]}
-                  />
-                  <Text style={styles.usernameText} numberOfLines={1}>
-                    {u.username}
-                  </Text>
-                </View>
               </View>
             );
           }}
@@ -450,27 +453,6 @@ const styles = StyleSheet.create({
     includeFontPadding: false,
   },
 
-  usernameRow: {
-    marginTop: 6,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    maxWidth: BUBBLE,
-  },
-
-  presenceDotLeft: {
-    width: 9,
-    height: 9,
-    borderRadius: 999,
-    borderWidth: 2,
-    borderColor: "rgba(255,255,255,0.85)",
-  },
-  usernameText: { 
-    color: "rgba(255,255,255,0.95)", 
-    fontWeight: "900", 
-    flexShrink: 1, 
-  },
-
   emptyText: { 
     color: "rgba(255,255,255,0.9)", 
     fontWeight: "800", 
@@ -574,7 +556,7 @@ const styles = StyleSheet.create({
   },
 
   sendBtn: {
-    backgroundColor: "#00a82f",
+    backgroundColor: "#00d13b",
     borderColor: "rgb(255, 255, 255)",
     borderWidth: 1,
   },
@@ -584,6 +566,10 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 100,
     marginTop: 20,
+  },
+
+  contactBubbleOuterOnline: {
+    backgroundColor: "#00d13b",
   },
  
 });
