@@ -19,12 +19,7 @@ import { useTranslation } from "react-i18next";
 import LanguageDropdown from "../components/LanguageDropdown";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { apiJson } from "../../lib/api";
-import { apiFetch } from "../../lib/api";
-import ProfileLauncher from "../components/ProfileLauncher";
-import ProfileModal from "../components/ProfileModal";
-import useProfileAvatar from "../hooks/useProfileAvatar";
-import useProfileInbox from "../hooks/useProfileInbox";
-import useRefreshOnFocus from "../hooks/useRefreshOnFocus";
+import ProfileEntryPoint from "../components/ProfileEntryPoint";
 
 
 
@@ -110,134 +105,6 @@ export default function SettingsScreen() {
   const [editOpen, setEditOpen] = useState(false);
   const [editEmoji, setEditEmoji] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
-
-  const refreshConversations = async () => [];
-
-  const {
-    myAvatarUrl,
-    myUsername,
-    refreshMe,
-    pickAndUploadAvatar,
-    removeAvatar,
-  } = useProfileAvatar({ t });
-
-  const {
-    profileOpen,
-    setProfileOpen,
-    setChatRequests,
-    setContactRequests,
-    unifiedIncoming,
-    unifiedOutgoing,
-    loadingRequests,
-    loadingPending,
-    refreshChatRequests,
-    refreshChatOutgoing,
-    refreshContactRequests,
-    refreshContactOutgoing,
-    openProfileAndRefresh,
-    refreshAllProfileInbox,
-    badgeCount,
-  } = useProfileInbox({
-    t,
-    refreshConversations,
-    refreshMe,
-  });
-
-  useRefreshOnFocus(refreshAllProfileInbox);
-
-async function acceptChatRequest(item: any) {
-  try {
-    let out: any = null;
-
-
-    if ((item as any)?.kind === "rejoin") {
-      out = await apiFetch(`/api/rejoin/requests/${item.id}/accept`, { method: "POST" });
-    } else {
-      out = await apiFetch(`/api/conversations/requests/${item.id}/accept`, { method: "POST" });
-    }
-
-
-    setChatRequests((prev) => prev.filter((r: any) => r.id !== item.id));
-    await refreshChatOutgoing();
-
-
-    const conversationId = (out as any)?.conversationId as string | undefined;
-    if (conversationId) {
-      setProfileOpen(false);
-      router.push("/messages");
-    }
-  } catch (err: any) {
-    Alert.alert(t("common.acceptFailed"), err?.message ?? t("common.couldNotAccept"));
-  }
-}
-
-
-async function rejectChatRequest(item: any) {
-  try {
-    if ((item as any)?.kind === "rejoin") {
-      await apiFetch(`/api/rejoin/requests/${item.id}/reject`, { method: "POST" });
-    } else {
-      await apiFetch(`/api/conversations/requests/${item.id}/reject`, { method: "POST" });
-    }
-    setChatRequests((prev) => prev.filter((r: any) => r.id !== item.id));
-  } catch (err: any) {
-    Alert.alert(t("common.rejectFailed"), err?.message ?? t("common.couldNotReject"));
-  }
-}
-
-
-async function acceptContactRequest(item: any) {
-  try {
-    await apiFetch(`/api/contacts/requests/${item.id}/accept`, { method: "POST" });
-    setContactRequests((prev) => prev.filter((r: any) => r.id !== item.id));
-    await refreshContactOutgoing();
-    setProfileOpen(false);
-    router.push("/contacts");
-  } catch (err: any) {
-    Alert.alert(t("common.acceptFailed"), err?.message ?? t("common.couldNotAccept"));
-  }
-}
-
-
-async function rejectContactRequest(item: any) {
-  try {
-    await apiFetch(`/api/contacts/requests/${item.id}/reject`, { method: "POST" });
-    setContactRequests((prev) => prev.filter((r: any) => r.id !== item.id));
-  } catch (err: any) {
-    Alert.alert(t("common.rejectFailed"), err?.message ?? t("common.couldNotReject"));
-  }
-}
-
-
-async function cancelPendingRequest(item: any) {
-  try {
-    if (item.kind === "chat") {
-      const raw = item.raw as any;
-
-
-      if (raw?.kind === "rejoin") {
-        await apiFetch(`/api/rejoin/requests/${item.id}/cancel`, { method: "POST" });
-      } else {
-        await apiFetch(`/api/conversations/requests/${item.id}/cancel`, { method: "POST" });
-      }
-
-
-      await refreshChatOutgoing();
-      await refreshChatRequests();
-      return;
-    }
-
-
-    await apiFetch(`/api/contacts/requests/${item.id}/cancel`, { method: "POST" });
-    await refreshContactOutgoing();
-    await refreshContactRequests();
-  } catch (err: any) {
-    Alert.alert(
-      t("common.errorTitle"),
-      err?.message ?? t("errors.requestFailed")
-    );
-  }
-}
 
 
   function handleRecordPress() {
@@ -377,49 +244,11 @@ async function cancelPendingRequest(item: any) {
           <LanguageDropdown />
         </View>
 
-    <ProfileLauncher
-  avatarUrl={myAvatarUrl}
-  username={myUsername}
-  badgeCount={badgeCount}
-  onPress={() => openProfileAndRefresh().catch(() => {})}
-/>
-
-
-<ProfileModal
-  visible={profileOpen}
-  onClose={() => setProfileOpen(false)}
-  t={t}
-  myUsername={myUsername}
-  myAvatarUrl={myAvatarUrl}
-  unifiedIncoming={unifiedIncoming}
-  unifiedOutgoing={unifiedOutgoing}
-  loadingRequests={loadingRequests}
-  loadingPending={loadingPending}
-  onRefreshRequests={() => {
-    refreshChatRequests().catch(() => {});
-    refreshContactRequests().catch(() => {});
-  }}
-  onRefreshPending={() => {
-    refreshChatOutgoing().catch(() => {});
-    refreshContactOutgoing().catch(() => {});
-  }}
-  onAcceptChatRequest={acceptChatRequest}
-  onRejectChatRequest={rejectChatRequest}
-  onAcceptContactRequest={acceptContactRequest}
-  onRejectContactRequest={rejectContactRequest}
-  onCancelPending={cancelPendingRequest}
-  onPickAndUploadAvatar={() => {
-    pickAndUploadAvatar().catch(() => {});
-  }}
-  onRemoveAvatar={() => {
-    removeAvatar().catch(() => {});
-  }}
-  onOpenContacts={() => {
-    setProfileOpen(false);
-    router.push("/contacts");
-  }}
-/>
-
+        <ProfileEntryPoint
+          t={t}
+          router={router}
+          refreshConversations={async () => []}
+        />
 
         <View style={styles.content}>
           <TouchableOpacity

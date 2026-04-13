@@ -2,7 +2,6 @@
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import React, { useEffect, useRef, useState } from "react";
-import useRefreshOnFocus from "../hooks/useRefreshOnFocus";
 import {
   Alert,
   Dimensions,
@@ -18,10 +17,7 @@ import { getUserId } from "../../lib/session";
 import { useTranslation } from "react-i18next";
 import type {
   Conversation,
-  IncomingInvite,
   RequestResponse,
-  IncomingContactInvite,
-  IncomingRejoinInvite,
 } from "../../lib/types";
 
 import {
@@ -29,10 +25,7 @@ import {
   isWsOpen,
 } from "../../lib/realtime";
 import { usePresence } from "../../lib/presence";
-import ProfileLauncher from "../components/ProfileLauncher";
-import ProfileModal from "../components/ProfileModal";
 import useProfileInbox from "../hooks/useProfileInbox";
-import useProfileAvatar from "../hooks/useProfileAvatar";
 import RecentlyLeftModal from "../components/RecentlyLeftModal";
 import StarredModal from "../components/StarredModal";
 import ExtrasModal from "../components/ExtrasModal";
@@ -40,9 +33,9 @@ import FloatingConversationField, { type MovingBubble} from "../components/Float
 import ChatOverlay, { type ChatOverlayMessage } from "../components/ChatOverlay";
 import useChatAudio from "../hooks/useChatAudio";
 import useConversationRealtime from "../hooks/useConversationRealtime";
-import type { OutgoingNotif } from "../hooks/useProfileInbox";
-import { mapApiMessageToChatMessage, sortChatMessagesByCreatedAt } from "../utils/chatMessageMapper";
-
+import { mapApiMessageToChatMessage, sortChatMessagesByCreatedAt } from "../../lib/chatMessageMapper";
+import ProfileEntryPoint from "../components/ProfileEntryPoint";
+import useProfileAvatar from "../hooks/useProfileAvatar";
 
 const { height } = Dimensions.get("window");
 
@@ -106,53 +99,24 @@ export default function MessagesScreen() {
     return data;
   }
 
-  
-  const {
-  myAvatarUrl,
-  myUsername,
+const {
   refreshMe,
-  pickAndUploadAvatar,
-  removeAvatar,
-  } = useProfileAvatar({ t });
+} = useProfileAvatar({ t });
 
   const {
-  profileOpen,
   setProfileOpen,
-
-
   recentlyLeft,
   loadingRecentlyLeft,
-
-
-  setChatRequests,
-  setContactRequests,
-
-
-  unifiedIncoming,
-  unifiedOutgoing,
-
-
-  loadingRequests,
-  loadingPending,
-
-
   refreshChatRequests,
   refreshChatOutgoing,
-  refreshContactRequests,
-  refreshContactOutgoing,
   refreshRecentlyLeft,
   openProfileAndRefresh,
-  refreshAllProfileInbox,
-
-
-  badgeCount,
   } = useProfileInbox({
   t,
   refreshConversations,
   refreshMe,
 });
 
-useRefreshOnFocus (refreshAllProfileInbox);
 
 const {
   wsRef,
@@ -206,9 +170,6 @@ const {
     try {
       setLoading(true);
       setLoadingError(null);
-
-
-      await refreshAllProfileInbox();
 
 
       if (cancelled) return;
@@ -511,116 +472,6 @@ if (payload?.code === "REJOIN_PENDING") {
   }
 
 
-// Request action handlers stay here for now because they coordinate
-// screen-local UI concerns: alerts, navigation, modal state, and chat opening.
-// Chat invites: Accept (normal + rejoin)
-async function acceptChatRequest(item: IncomingInvite | IncomingRejoinInvite | any) {
-  try {
-    let out: any = null;
-
-
-    // ✅ Rejoin invite accept
-    if ((item as any)?.kind === "rejoin") {
-      out = await apiFetch(`/api/rejoin/requests/${item.id}/accept`, { method: "POST" });
-    } else {
-      // ✅ Normal invite accept
-      out = await apiFetch(`/api/conversations/requests/${item.id}/accept`, { method: "POST" });
-    }
-
-
-    setChatRequests((prev) => prev.filter((r: any) => r.id !== item.id));
-    await refreshChatOutgoing();
-
-
-    const conversationId = (out as any)?.conversationId as string | undefined;
-
-
-    if (conversationId) {
-      Alert.alert(t("common.accepted"), t("common.openingChat"));
-      await openConversationById(conversationId);
-    } else {
-      // fallback safety
-      await refreshConversations();
-      Alert.alert(t("common.accepted"), t("common.chatAvailable"));
-    }
-  } catch (err: any) {
-    Alert.alert(t("common.acceptFailed"), err?.message ?? t("common.couldNotAccept"));
-  }
-}
-
-
-  async function rejectChatRequest(item: IncomingInvite | IncomingRejoinInvite | any) {
-  try {
-    // ✅ Rejoin invite reject
-    if ((item as any)?.kind === "rejoin") {
-      await apiFetch(`/api/rejoin/requests/${item.id}/reject`, { method: "POST" });
-      setChatRequests((prev) => prev.filter((r: any) => r.id !== item.id));
-      return;
-    }
-
-
-    // ✅ Normal invite reject
-    await apiFetch(`/api/conversations/requests/${item.id}/reject`, { method: "POST" });
-    setChatRequests((prev) => prev.filter((r: any) => r.id !== item.id));
-  } catch (err: any) {
-    Alert.alert(t("common.rejectFailed"), err?.message ?? t("common.couldNotReject"));
-  }
-}
-
-
-  // Contact invites: Add/Deny + redirect to Contacts after Add
-  async function acceptContactRequest(reqItem: IncomingContactInvite) {
-    try {
-      await apiFetch(`/api/contacts/requests/${reqItem.id}/accept`, { method: "POST" });
-      setContactRequests((prev) => prev.filter((r) => r.id !== reqItem.id));
-      await refreshContactOutgoing();
-      setProfileOpen(false);
-      router.push("/contacts");
-    } catch (err: any) {
-      Alert.alert(t("common.acceptFailed"), err?.message ?? t("common.couldNotAccept"));
-    }
-  }
-
-
-  async function rejectContactRequest(reqItem: IncomingContactInvite) {
-    try {
-      await apiFetch(`/api/contacts/requests/${reqItem.id}/reject`, { method: "POST" });
-      setContactRequests((prev) => prev.filter((r) => r.id !== reqItem.id));
-    } catch (err: any) {
-      Alert.alert(t("common.rejectFailed"), err?.message ?? t("common.couldNotReject"));
-    }
-  }
-
-async function cancelPendingRequest(item: OutgoingNotif) {
-  try {
-    if (item.kind === "chat") {
-      const raw = item.raw as any;
-
-
-      if (raw?.kind === "rejoin") {
-        await apiFetch(`/api/rejoin/requests/${item.id}/cancel`, { method: "POST" });
-        await refreshChatOutgoing();
-        await refreshChatRequests();
-        return;
-      }
-
-      await apiFetch(`/api/conversations/requests/${item.id}/cancel`, { method: "POST" });
-      await refreshChatOutgoing();
-      await refreshChatRequests();
-      return;
-    }
-
-    await apiFetch(`/api/contacts/requests/${item.id}/cancel`, { method: "POST" });
-    await refreshContactOutgoing();
-    await refreshContactRequests();
-  } catch (err: any) {
-    Alert.alert(
-      t("common.errorTitle"),
-      err?.message ?? t("common.requestFailed")
-    );
-  }
-}
-
   // Compute a simple "is the other user online?" from room presence
   const otherUserId = activeConversation?.otherUserId ?? null;
   const otherOnline = otherUserId ? !!presenceMap[otherUserId] : false;
@@ -731,14 +582,6 @@ async function cancelPendingRequest(item: OutgoingNotif) {
   t={t}
 />
 
-      {/* Profile circle button */}
-      <ProfileLauncher
-  avatarUrl={myAvatarUrl}
-  username={myUsername}
-  badgeCount={badgeCount}
-  disabled={!!activeConversation}
-  onPress={() => openProfileAndRefresh().catch(() => {})}
-/>
 
 <FloatingConversationField
   conversations={conversations}
@@ -783,63 +626,39 @@ async function cancelPendingRequest(item: OutgoingNotif) {
       </TouchableOpacity>
 
 
-      <ProfileModal
-  visible={profileOpen}
-  onClose={() => setProfileOpen(false)}
-  t={t}
-  myUsername={myUsername}
-  myAvatarUrl={myAvatarUrl}
-  unifiedIncoming={unifiedIncoming}
-  unifiedOutgoing={unifiedOutgoing}
-  loadingRequests={loadingRequests}
-  loadingPending={loadingPending}
-  onRefreshRequests={() => {
-    refreshChatRequests().catch(() => {});
-    refreshContactRequests().catch(() => {});
-  }}
-  onRefreshPending={() => {
-    refreshChatOutgoing().catch(() => {});
-    refreshContactOutgoing().catch(() => {});
-  }}
-  onAcceptChatRequest={acceptChatRequest}
-  onRejectChatRequest={rejectChatRequest}
-  onAcceptContactRequest={acceptContactRequest}
-  onRejectContactRequest={rejectContactRequest}
-  onCancelPending={cancelPendingRequest}
-  onPickAndUploadAvatar={() => {
-    pickAndUploadAvatar().catch(() => {});
-  }}
-  onRemoveAvatar={() => {
-    removeAvatar().catch(() => {});
-  }}
-  onOpenContacts={() => {
-    setProfileOpen(false);
-    router.push("/contacts");
-  }}
-/>
+      <ProfileEntryPoint
+        t={t}
+        router={router}
+        refreshConversations={refreshConversations}
+        disabled={!!activeConversation}
+        onAcceptedConversation={(conversationId) => openConversationById(conversationId)}
+        onOpenContacts={() => {
+          router.push("/contacts");
+        }}
+      />
 
       <ChatOverlay
-  visible={!!activeConversation}
-  activeConversation={activeConversation}
-  chatMessages={chatMessages}
-  draft={draft}
-  keyboardHeight={keyboardHeight}
-  inputOffset={INPUT_OFFSET}
-  otherTyping={otherTyping}
-  otherOnline={otherOnline}
-  playingMessageId={playingMessageId}
-  t={t}
-  onBack={() => {
-    stopCurrentAudio()
-      .then(() => setActiveConversation(null))
-      .catch(() => setActiveConversation(null));
-  }}
-  onChangeDraft={setDraft}
-  onSend={() => {
-    handleSend().catch(() => {});
-  }}
-  onPlayMessage={(item) => {
-    playMessageAudio(item, activeConversation?.id ?? undefined).catch(() => {});
+        visible={!!activeConversation}
+        activeConversation={activeConversation}
+        chatMessages={chatMessages}
+        draft={draft}
+        keyboardHeight={keyboardHeight}
+        inputOffset={INPUT_OFFSET}
+        otherTyping={otherTyping}
+        otherOnline={otherOnline}
+        playingMessageId={playingMessageId}
+          t={t}
+          onBack={() => {
+            stopCurrentAudio()
+            .then(() => setActiveConversation(null))
+            .catch(() => setActiveConversation(null));
+      }}
+        onChangeDraft={setDraft}
+        onSend={() => {
+          handleSend().catch(() => {});
+      }}
+        onPlayMessage={(item) => {
+          playMessageAudio(item, activeConversation?.id ?? undefined).catch(() => {});
   }}
 />
 

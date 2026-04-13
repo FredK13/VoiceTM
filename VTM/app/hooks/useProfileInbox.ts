@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { apiJson } from "../../lib/api";
 import type {
   IncomingInvite,
@@ -111,128 +111,151 @@ export function useProfileInbox({ t, refreshConversations, refreshMe }: Args) {
     chatRequests.length + chatOutgoing.length + contactRequests.length + contactOutgoing.length;
 
 
-  async function refreshChatRequests() {
-    setLoadingChatRequests(true);
-    try {
-      const [invites, rejoins] = await Promise.all([
-        apiJson<IncomingInvite[]>("/api/conversations/requests"),
-        apiJson<IncomingRejoinInvite[]>("/api/rejoin/requests"),
-      ]);
-
-
-      const safeInvites = Array.isArray(invites) ? invites : [];
-      const safeRejoins = Array.isArray(rejoins) ? rejoins : [];
-
-
-      setChatRequests([...(safeInvites as any[]), ...(safeRejoins as any[])] as any);
-    } catch (err) {
-      console.warn("Failed to load chat requests:", err);
-      setChatRequests([]);
-    } finally {
-      setLoadingChatRequests(false);
-    }
-  }
-
-
-  async function refreshChatOutgoing() {
-    setLoadingChatOutgoing(true);
-    try {
-      const [invites, rejoins] = await Promise.all([
-        apiJson<OutgoingInvite[]>("/api/conversations/requests/outgoing"),
-        apiJson<OutgoingRejoinInvite[]>("/api/rejoin/requests/outgoing"),
-      ]);
-
-
-      const safeInvites = Array.isArray(invites) ? invites : [];
-      const safeRejoins = Array.isArray(rejoins) ? rejoins : [];
-
-
-      const merged = ([...(safeInvites as any[]), ...(safeRejoins as any[])] as any[]);
-
-
-      const prevCount = lastChatOutgoingCountRef.current;
-      lastChatOutgoingCountRef.current = merged.length;
-
-
-      setChatOutgoing(merged as any);
-
-
-      if (merged.length < prevCount) {
-        await refreshConversations();
-      }
-    } catch (err) {
-      console.warn("Failed to load chat outgoing:", err);
-      setChatOutgoing([]);
-    } finally {
-      setLoadingChatOutgoing(false);
-    }
-  }
-
-
-  async function refreshContactRequests() {
-    setLoadingContactRequests(true);
-    try {
-      const data = await apiJson<IncomingContactInvite[]>("/api/contacts/requests");
-      setContactRequests(Array.isArray(data) ? data : []);
-    } catch (err) {
-      console.warn("Failed to load contact requests:", err);
-      setContactRequests([]);
-    } finally {
-      setLoadingContactRequests(false);
-    }
-  }
-
-
-  async function refreshContactOutgoing() {
-    setLoadingContactOutgoing(true);
-    try {
-      const data = await apiJson<OutgoingContactInvite[]>("/api/contacts/requests/outgoing");
-      setContactOutgoing(Array.isArray(data) ? data : []);
-    } catch (err) {
-      console.warn("Failed to load contact outgoing:", err);
-      setContactOutgoing([]);
-    } finally {
-      setLoadingContactOutgoing(false);
-    }
-  }
-
-
-  async function refreshRecentlyLeft() {
-    setLoadingRecentlyLeft(true);
-    try {
-      const data = await apiJson<RecentlyLeftRow[]>("/api/rejoin/recently-left");
-      setRecentlyLeft(Array.isArray(data) ? data : []);
-    } catch (err) {
-      console.warn("Failed to load recently left:", err);
-      setRecentlyLeft([]);
-    } finally {
-      setLoadingRecentlyLeft(false);
-    }
-  }
-
-
-  async function openProfileAndRefresh() {
-    setProfileOpen(true);
-    await Promise.all([
-      refreshMe(),
-      refreshChatRequests(),
-      refreshChatOutgoing(),
-      refreshContactRequests(),
-      refreshContactOutgoing(),
+  const refreshChatRequests = useCallback(async () => {
+  setLoadingChatRequests(true);
+  try {
+    const [invites, rejoins] = await Promise.all([
+      apiJson<IncomingInvite[]>("/api/conversations/requests"),
+      apiJson<IncomingRejoinInvite[]>("/api/rejoin/requests"),
     ]);
+
+
+    const safeInvites = Array.isArray(invites) ? invites : [];
+    const safeRejoins = Array.isArray(rejoins) ? rejoins : [];
+
+
+    setChatRequests([...(safeInvites as any[]), ...(safeRejoins as any[])] as any);
+  } catch (err) {
+    console.warn("Failed to load chat requests:", err);
+    setChatRequests([]);
+  } finally {
+    setLoadingChatRequests(false);
   }
+}, []);
 
 
-  async function refreshAllProfileInbox() {
-    await Promise.all([
-      refreshMe(),
-      refreshChatRequests(),
-      refreshChatOutgoing(),
-      refreshContactRequests(),
-      refreshContactOutgoing(),
-      refreshConversations(),
+
+  const refreshChatOutgoing = useCallback(async () => {
+  setLoadingChatOutgoing(true);
+  try {
+    const [invites, rejoins] = await Promise.all([
+      apiJson<OutgoingInvite[]>("/api/conversations/requests/outgoing"),
+      apiJson<OutgoingRejoinInvite[]>("/api/rejoin/requests/outgoing"),
     ]);
+
+
+    const safeInvites = Array.isArray(invites) ? invites : [];
+    const safeRejoins = Array.isArray(rejoins) ? rejoins : [];
+
+
+    const merged = ([...(safeInvites as any[]), ...(safeRejoins as any[])] as any[]);
+
+
+    const prevCount = lastChatOutgoingCountRef.current;
+    lastChatOutgoingCountRef.current = merged.length;
+
+
+    setChatOutgoing(merged as any);
+
+
+    if (merged.length < prevCount) {
+      await refreshConversations();
+    }
+  } catch (err) {
+    console.warn("Failed to load chat outgoing:", err);
+    setChatOutgoing([]);
+  } finally {
+    setLoadingChatOutgoing(false);
   }
+}, [refreshConversations]);
+
+
+
+
+
+  const refreshContactRequests = useCallback(async () => {
+  setLoadingContactRequests(true);
+  try {
+    const data = await apiJson<IncomingContactInvite[]>("/api/contacts/requests");
+    setContactRequests(Array.isArray(data) ? data : []);
+  } catch (err) {
+    console.warn("Failed to load contact requests:", err);
+    setContactRequests([]);
+  } finally {
+    setLoadingContactRequests(false);
+  }
+}, []);
+
+
+  const refreshContactOutgoing = useCallback(async () => {
+  setLoadingContactOutgoing(true);
+  try {
+    const data = await apiJson<OutgoingContactInvite[]>("/api/contacts/requests/outgoing");
+    setContactOutgoing(Array.isArray(data) ? data : []);
+  } catch (err) {
+    console.warn("Failed to load contact outgoing:", err);
+    setContactOutgoing([]);
+  } finally {
+    setLoadingContactOutgoing(false);
+  }
+}, []);
+
+
+
+  const refreshRecentlyLeft = useCallback(async () => {
+  setLoadingRecentlyLeft(true);
+  try {
+    const data = await apiJson<RecentlyLeftRow[]>("/api/rejoin/recently-left");
+    setRecentlyLeft(Array.isArray(data) ? data : []);
+  } catch (err) {
+    console.warn("Failed to load recently left:", err);
+    setRecentlyLeft([]);
+  } finally {
+    setLoadingRecentlyLeft(false);
+  }
+}, []);
+
+
+
+  const openProfileAndRefresh = useCallback(async () => {
+  setProfileOpen(true);
+  await Promise.all([
+    refreshMe(),
+    refreshChatRequests(),
+    refreshChatOutgoing(),
+    refreshContactRequests(),
+    refreshContactOutgoing(),
+  ]);
+}, [
+  refreshMe,
+  refreshChatRequests,
+  refreshChatOutgoing,
+  refreshContactRequests,
+  refreshContactOutgoing,
+]);
+
+
+
+  const refreshAllProfileInbox = useCallback(async () => {
+  await Promise.all([
+    refreshMe(),
+    refreshChatRequests(),
+    refreshChatOutgoing(),
+    refreshContactRequests(),
+    refreshContactOutgoing(),
+    refreshConversations(),
+  ]);
+}, [
+  refreshMe,
+  refreshChatRequests,
+  refreshChatOutgoing,
+  refreshContactRequests,
+  refreshContactOutgoing,
+  refreshConversations,
+]);
+
+
+
 
 
   return {

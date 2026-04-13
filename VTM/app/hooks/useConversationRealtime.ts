@@ -9,7 +9,7 @@ import {
 } from "../../lib/realtime";
 import type { Conversation } from "../../lib/types";
 import type { ChatOverlayMessage } from "../components/ChatOverlay";
-import { mapApiMessageToChatMessage, sortChatMessagesByCreatedAt } from "../utils/chatMessageMapper";
+import { mapApiMessageToChatMessage, sortChatMessagesByCreatedAt } from "../../lib/chatMessageMapper";
 
 
 type WsMsgNew = {

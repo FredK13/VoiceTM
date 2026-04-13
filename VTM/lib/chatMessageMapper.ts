@@ -1,6 +1,6 @@
 // app/utils/chatMessageMapper.ts
-import { API_BASE } from "../../lib/api";
-import type { ChatOverlayMessage } from "../components/ChatOverlay";
+import { API_BASE } from "./api";
+import type { ChatOverlayMessage } from "../app/components/ChatOverlay";
 
 
 export type ApiMessageLike = {

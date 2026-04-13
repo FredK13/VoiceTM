@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import * as ImagePicker from "expo-image-picker";
 import { Alert } from "react-native";
 import { apiFetch, apiJson } from "../../lib/api";
@@ -14,15 +14,16 @@ export function useProfileAvatar({ t }: Args) {
   const [myUsername, setMyUsername] = useState<string>("");
 
 
-  async function refreshMe() {
-    try {
-      const me = await apiJson<{ id: string; username: string; avatarUrl?: string | null }>("/api/me");
-      setMyUsername(me.username ?? "");
-      setMyAvatarUrl(me.avatarUrl ?? null);
-    } catch (e) {
-      console.warn("refreshMe failed:", e);
-    }
+  const refreshMe = useCallback(async () => {
+  try {
+    const me = await apiJson<{ id: string; username: string; avatarUrl?: string | null }>("/api/me");
+    setMyUsername(me.username ?? "");
+    setMyAvatarUrl(me.avatarUrl ?? null);
+  } catch (e) {
+    console.warn("refreshMe failed:", e);
   }
+}, []);
+
 
 
   async function pickAndUploadAvatar() {
