@@ -136,7 +136,7 @@ function FakeBubbleModal({
               </TouchableOpacity>
 
               <Text style={styles.helperText}>
-                long-press to removes bubbles
+                long-press to remove bubbles
               </Text>
             </View>
           </View>

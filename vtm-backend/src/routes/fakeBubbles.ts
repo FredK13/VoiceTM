@@ -1,6 +1,6 @@
-// src/routes/fakeBubbles.ts
 import { Router } from "express";
 import prisma from "../prismaClient";
+import { FakeBubbleSlot } from "@prisma/client";
 import { requireAuth, requireUserId } from "../middleware/requireAuth";
 import rateLimit from "express-rate-limit";
 
@@ -36,6 +36,23 @@ function toFiniteNumber(value: unknown): number | null {
 }
 
 
+const FAKE_BUBBLE_SLOTS: FakeBubbleSlot[] = [
+  FakeBubbleSlot.SLOT_1,
+  FakeBubbleSlot.SLOT_2,
+  FakeBubbleSlot.SLOT_3,
+  FakeBubbleSlot.SLOT_4,
+];
+
+
+function firstOpenSlot(usedSlots: FakeBubbleSlot[]): FakeBubbleSlot | null {
+  const used = new Set(usedSlots);
+  for (const slot of FAKE_BUBBLE_SLOTS) {
+    if (!used.has(slot)) return slot;
+  }
+  return null;
+}
+
+
 /**
  * GET /api/fake-bubbles
  * Returns all fake bubbles owned by the logged-in user.
@@ -51,6 +68,7 @@ router.get("/", requireAuth, fakeBubbleLimiter, async (req, res, next) => {
       select: {
         id: true,
         userId: true,
+        slot: true,
         x: true,
         y: true,
         vx: true,
@@ -97,12 +115,16 @@ router.post("/", requireAuth, fakeBubbleLimiter, async (req, res, next) => {
     }
 
 
-    const count = await prisma.fakeBubble.count({
+    const existing = await prisma.fakeBubble.findMany({
       where: { userId },
+      select: { slot: true },
     });
 
 
-    if (count >= 4) {
+    const slot = firstOpenSlot(existing.map((row) => row.slot));
+
+
+    if (!slot) {
       return res.status(400).json({
         error: "Maximum fake bubbles reached",
         code: "FAKE_BUBBLE_LIMIT_REACHED",
@@ -113,6 +135,7 @@ router.post("/", requireAuth, fakeBubbleLimiter, async (req, res, next) => {
     const bubble = await prisma.fakeBubble.create({
       data: {
         userId,
+        slot,
         x,
         y,
         vx,
@@ -122,6 +145,7 @@ router.post("/", requireAuth, fakeBubbleLimiter, async (req, res, next) => {
       select: {
         id: true,
         userId: true,
+        slot: true,
         x: true,
         y: true,
         vx: true,
@@ -134,7 +158,14 @@ router.post("/", requireAuth, fakeBubbleLimiter, async (req, res, next) => {
 
 
     return res.status(201).json(bubble);
-  } catch (err) {
+  } catch (err: any) {
+    // Nice fallback if two fast requests race for the same slot
+    if (err?.code === "P2002") {
+      return res.status(400).json({
+        error: "Maximum fake bubbles reached",
+        code: "FAKE_BUBBLE_LIMIT_REACHED",
+      });
+    }
     next(err);
   }
 });
@@ -182,4 +213,5 @@ router.delete("/:id", requireAuth, fakeBubbleLimiter, async (req, res, next) => 
 
 
 export default router;
+
 

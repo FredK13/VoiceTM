@@ -24,6 +24,13 @@ enum InviteStatus {
   CANCELLED
 }
 
+enum FakeBubbleSlot {
+  SLOT_1
+  SLOT_2
+  SLOT_3
+  SLOT_4
+}
+
 enum ContactInviteStatus {
   PENDING
   ACCEPTED
@@ -241,6 +248,8 @@ model FakeBubble {
   user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
   userId String
 
+  slot FakeBubbleSlot
+
   x    Float
   y    Float
   vx   Float
@@ -249,9 +258,11 @@ model FakeBubble {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  
+
+  @@unique([userId, slot])
   @@index([userId])
 }
+
 
 
 model Contact {

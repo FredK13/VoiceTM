@@ -50,6 +50,7 @@ type ApiFakeBubble = {
   size: number;
   createdAt: string;
   updatedAt: string;
+  slot: string;
 };
 
 

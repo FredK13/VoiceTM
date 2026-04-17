@@ -181,47 +181,73 @@ router.post("/requests/:id/accept", requireAuth, rejoinLimiter, async (req, res,
     });
     if (!inv) return res.status(404).json({ error: "Invite not found" });
 
-    const [conversation, accepterMembership] = await Promise.all([
-  prisma.conversation.findUnique({
-    where: { id: inv.conversationId },
-    select: { id: true },
-  }),
-  prisma.conversationMember.findUnique({
-    where: {
-      conversationId_userId: {
-        conversationId: inv.conversationId,
-        userId: inv.toUserId,
-      },
-    },
-    select: { id: true, leftAt: true },
-  }),
-]);
+       const [conversation, fromMembership, toMembership] = await Promise.all([
+      prisma.conversation.findUnique({
+        where: { id: inv.conversationId },
+        select: { id: true },
+      }),
+      prisma.conversationMember.findUnique({
+        where: {
+          conversationId_userId: {
+            conversationId: inv.conversationId,
+            userId: inv.fromUserId,
+          },
+        },
+        select: { id: true, leftAt: true },
+      }),
+      prisma.conversationMember.findUnique({
+        where: {
+          conversationId_userId: {
+            conversationId: inv.conversationId,
+            userId: inv.toUserId,
+          },
+        },
+        select: { id: true, leftAt: true },
+      }),
+    ]);
 
 
-if (!conversation) {
-  return res.status(404).json({ error: "Conversation not found" });
-}
+    if (!conversation) {
+      return res.status(404).json({ error: "Conversation not found" });
+    }
 
 
-if (!accepterMembership || accepterMembership.leftAt) {
-  return res.status(409).json({ error: "Conversation is no longer active" });
-}
+    const fromIsLeft = !!fromMembership?.leftAt;
+    const toIsLeft = !!toMembership?.leftAt;
+
+
+    let rejoinUserId: string | null = null;
+    let activeUserId: string | null = null;
+
+
+    if (fromIsLeft && !toIsLeft) {
+      rejoinUserId = inv.fromUserId;
+      activeUserId = inv.toUserId;
+    } else if (toIsLeft && !fromIsLeft) {
+      rejoinUserId = inv.toUserId;
+      activeUserId = inv.fromUserId;
+    } else {
+      return res.status(409).json({ error: "Conversation is no longer active" });
+    }
 
 
     await prisma.$transaction(async (tx) => {
-
       await tx.conversationRejoinInvite.update({
         where: { id: inv.id },
         data: { status: "ACCEPTED" },
       });
 
 
-      // ✅ IMPORTANT: re-activate the leaver (fromUserId), not the accepter
       await tx.conversationMember.upsert({
-        where: { conversationId_userId: { conversationId: inv.conversationId, userId: inv.fromUserId } },
+        where: {
+          conversationId_userId: {
+            conversationId: inv.conversationId,
+            userId: rejoinUserId,
+          },
+        },
         create: {
           conversationId: inv.conversationId,
-          userId: inv.fromUserId,
+          userId: rejoinUserId,
           hiddenAt: null,
           leftAt: null,
         },
@@ -232,9 +258,11 @@ if (!accepterMembership || accepterMembership.leftAt) {
       });
 
 
-      // optional: ensure accepter stays visible too
       await tx.conversationMember.updateMany({
-        where: { conversationId: inv.conversationId, userId: inv.toUserId },
+        where: {
+          conversationId: inv.conversationId,
+          userId: { in: [activeUserId, rejoinUserId] },
+        },
         data: { hiddenAt: null },
       });
     });
