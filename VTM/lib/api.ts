@@ -103,6 +103,8 @@ function safeUserMessage(status: number, payload: any): string {
       return i18n.t("errors.rejoinRequestCancelInvalid");
     case "CONTACT_REQUEST_CANCEL_INVALID":
       return i18n.t("errors.contactRequestCancelInvalid");
+    case "FAKE_BUBBLE_LIMIT_REACHED":
+      return i18n.t("errors.fakeBubbleLimitReached");
       
     default:
       return defaultMessageForStatus(status);

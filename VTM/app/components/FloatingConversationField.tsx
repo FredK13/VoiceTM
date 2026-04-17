@@ -1,6 +1,5 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React from "react";
 import {
-  Dimensions,
   Image,
   StyleSheet,
   Text,
@@ -11,17 +10,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import type { Conversation } from "../../lib/types";
 
 
-const { width, height } = Dimensions.get("window");
-
-
-const BUBBLE_SIZE = width * 0.21;
-const SPEED_MIN = 15;
-const SPEED_MAX = 45;
-const TOP_BOUNDARY = height * 0.1;
-const BOTTOM_BOUNDARY = height * 0.88;
-
-
-const INNER = 0.77;
+const INNER = 1;
 const OFFLINE_RING_WIDTH = 4;
 const ONLINE_RING_WIDTH = 4;
 
@@ -36,7 +25,6 @@ const GLASS_COLORS = [
 
 const HIGHLIGHT_COLORS = ["rgba(255,255,255,0.35)", "rgba(255,255,255,0)"] as const;
 
-
 export type MovingBubble = Conversation & {
   size: number;
   x: number;
@@ -45,168 +33,30 @@ export type MovingBubble = Conversation & {
   vy: number;
 };
 
-
-function createBubbleForConversation(c: Conversation): MovingBubble {
-  const size = BUBBLE_SIZE;
-  const speed = SPEED_MIN + Math.random() * (SPEED_MAX - SPEED_MIN);
-  const angle = Math.random() * Math.PI * 2;
-
-
-  return {
-    ...c,
-    size,
-    x: Math.random() * (width - size),
-    y: TOP_BOUNDARY + Math.random() * (BOTTOM_BOUNDARY - TOP_BOUNDARY - size),
-    vx: Math.cos(angle) * speed,
-    vy: Math.sin(angle) * speed,
-  };
-}
-
-
-export function createInitialBubbles(source: Conversation[]): MovingBubble[] {
-  return source.map(createBubbleForConversation);
-}
-
-
 type Props = {
-  conversations: Conversation[];
+  bubbles: MovingBubble[];
   disabled?: boolean;
   nowMs: number;
   isUserOnline: (userId: string, nowMs?: number) => boolean;
   onPressBubble: (bubble: MovingBubble) => void;
   onLongPressBubble: (bubble: MovingBubble) => void;
+  
 };
 
 
-export default function FloatingConversationField({
-  conversations,
+function FloatingConversationField({
+  bubbles,
   disabled = false,
   nowMs,
   isUserOnline,
   onPressBubble,
   onLongPressBubble,
+  
 }: Props) {
-  const [bubbles, setBubbles] = useState<MovingBubble[]>(() => createInitialBubbles(conversations));
-
-
-  useEffect(() => {
-    setBubbles((prev) => {
-      const prevMap = new Map(prev.map((b) => [b.id, b]));
-      return conversations.map((c) => {
-        const existing = prevMap.get(c.id);
-        if (!existing) return createBubbleForConversation(c);
-
-
-        return {
-          ...existing,
-          ...c,
-        };
-      });
-    });
-  }, [conversations]);
-
-
-  useEffect(() => {
-    let animationFrame = 0;
-    let lastTime = Date.now();
-
-
-    const step = () => {
-      const now = Date.now();
-      const dt = (now - lastTime) / 1000;
-      lastTime = now;
-
-
-      setBubbles((prev) => {
-        const next = prev.map((b) => ({ ...b }));
-
-
-        for (const b of next) {
-          b.x += b.vx * dt;
-          b.y += b.vy * dt;
-
-
-          if (b.x < 0) {
-            b.x = 0;
-            b.vx *= -1;
-          } else if (b.x > width - b.size) {
-            b.x = width - b.size;
-            b.vx *= -1;
-          }
-
-
-          if (b.y < TOP_BOUNDARY) {
-            b.y = TOP_BOUNDARY;
-            b.vy *= -1;
-          } else if (b.y > BOTTOM_BOUNDARY - b.size) {
-            b.y = BOTTOM_BOUNDARY - b.size;
-            b.vy *= -1;
-          }
-        }
-
-
-        for (let i = 0; i < next.length; i++) {
-          for (let j = i + 1; j < next.length; j++) {
-            const a = next[i];
-            const b = next[j];
-
-
-            const ax = a.x + a.size / 2;
-            const ay = a.y + a.size / 2;
-            const bx = b.x + b.size / 2;
-            const by = b.y + b.size / 2;
-
-
-            const dx = bx - ax;
-            const dy = by - ay;
-
-
-            const dist = Math.sqrt(dx * dx + dy * dy) || 0.0001;
-            const minDist = (a.size + b.size) / 2;
-
-
-            if (dist < minDist) {
-              const overlap = minDist - dist;
-              const nx = dx / dist;
-              const ny = dy / dist;
-
-
-              a.x -= (nx * overlap) / 2;
-              a.y -= (ny * overlap) / 2;
-              b.x += (nx * overlap) / 2;
-              b.y += (ny * overlap) / 2;
-
-
-              const tempVx = a.vx;
-              const tempVy = a.vy;
-              a.vx = b.vx;
-              a.vy = b.vy;
-              b.vx = tempVx;
-              b.vy = tempVy;
-            }
-          }
-        }
-
-
-        return next;
-      });
-
-
-      animationFrame = requestAnimationFrame(step);
-    };
-
-
-    animationFrame = requestAnimationFrame(step);
-    return () => cancelAnimationFrame(animationFrame);
-  }, []);
-
-
-  const renderedBubbles = useMemo(() => bubbles, [bubbles]);
-
 
   return (
     <>
-      {renderedBubbles.map((b) => {
+      {bubbles.map((b) => {
         const displayName = (b.otherUsername || b.title || "yap").trim();
         const innerSize = b.size * INNER;
         const nameFont = Math.max(10, Math.floor(innerSize * 0.22));
@@ -346,4 +196,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
     textAlign: "center",
   },
-});
+})
+
+export default React.memo(FloatingConversationField);

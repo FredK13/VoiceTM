@@ -8,7 +8,7 @@ import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import rejoinRouter from "./routes/rejoin";
 
-
+import fakeBubblesRouter from "./routes/fakeBubbles";
 import contactsRouter from "./routes/contacts";
 import authRouter from "./routes/auth";
 import conversationsRouter from "./routes/conversations";
@@ -140,6 +140,7 @@ app.use("/api/me", meRouter);
 app.use("/api/conversations", conversationsRouter);
 app.use("/api/messages", messagesRouter);
 app.use("/api/rejoin", rejoinRouter);
+app.use("/api/fake-bubbles", fakeBubblesRouter);
 
 // ✅ contacts router includes: contacts + contact invites + presence + block
 app.use("/api/contacts", contactsRouter);

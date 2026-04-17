@@ -31,7 +31,7 @@ import ContactsSettings from "../components/contactsComponents/ContactsSettings"
 
 
 const { width } = Dimensions.get("window");
-const BUBBLE = Math.min(92, Math.max(66, width * 0.18));
+const BUBBLE = Math.min(92, Math.max(66, width * 0.185));
 const RING = 4;
 
 
@@ -61,6 +61,12 @@ export default function ContactsScreen() {
   const [nowMs, setNowMs] = useState(() => Date.now());
   const { setFromSnapshot, isUserOnline } = usePresence();
 
+  const [selectedContact, setSelectedContact] = useState<ContactRow["user"] | null>(null);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [sendingYap, setSendingYap] = useState(false);
+
+  const selectedContactOnline =
+  !!selectedContact?.id && isUserOnline(selectedContact.id, nowMs);
 
   const clockTimerRef = useRef<any>(null);
 
@@ -102,6 +108,16 @@ export default function ContactsScreen() {
       setLoading(false);
     }
   }
+
+  function openContactProfile(user: ContactRow["user"]) {
+  setSelectedContact(user);
+  setProfileOpen(true);
+}
+
+function closeContactProfile() {
+  setProfileOpen(false);
+  setSelectedContact(null);
+}
 
 
   useEffect(() => {
@@ -175,6 +191,61 @@ export default function ContactsScreen() {
       Alert.alert(t("common.errorTitle"), e?.message ?? t("common.serverError"));
     }
   }
+
+  async function sendYapToSelectedContact() {
+  const user = selectedContact;
+  if (!user || sendingYap) return;
+
+
+  setSendingYap(true);
+  try {
+    const res = await apiJson<any>("/api/conversations/request", {
+      method: "POST",
+      json: { identifier: user.username },
+    });
+
+
+    if (res.status === "ALREADY_CONNECTED" && res.conversationId) {
+  const conversationId = String(res.conversationId);
+
+  closeContactProfile();
+
+  router.push({
+    pathname: "/messages",
+    params: { openConversationId: conversationId },
+  });
+
+  return;
+}
+
+
+    if (res.status === "PENDING_ALREADY") {
+      Alert.alert(t("common.pending"), t("common.currentRequestPending"));
+      return;
+    }
+
+
+    if (res.status === "INCOMING_PENDING") {
+      Alert.alert(t("common.requestWaitingTitle"), t("common.requestWaitingBody"));
+      return;
+    }
+
+
+    if (res.status === "REJOIN_SENT") {
+      Alert.alert(t("common.rejoinRequestSentTitle"), t("common.rejoinRequestSentBody"));
+      closeContactProfile();
+      return;
+    }
+
+
+    Alert.alert(t("common.sent"), t("common.requestSent"));
+    closeContactProfile();
+  } catch (e: any) {
+    Alert.alert(t("common.errorTitle"), e?.message ?? t("common.serverError"));
+  } finally {
+    setSendingYap(false);
+  }
+}
 
 
   function onLongPressContact(u: ContactRow["user"]) {
@@ -253,6 +324,7 @@ export default function ContactsScreen() {
               <View style={styles.contactItem}>
                 <TouchableOpacity
                   activeOpacity={0.9}
+                  onPress={() => openContactProfile(u)}
                   onLongPress={() => onLongPressContact(u)}
                   delayLongPress={600}
                 >
@@ -313,9 +385,8 @@ export default function ContactsScreen() {
             Alert.alert("Contacts settings", "Coming soon");
           }}
         />
-      </View>
-       
 
+    </View>
       <Modal visible={addOpen} transparent animationType="fade" onRequestClose={() => setAddOpen(false)}>
         <View style={styles.modalBackdrop}>
           <Pressable style={StyleSheet.absoluteFill} onPress={() => setAddOpen(false)} />
@@ -369,8 +440,84 @@ export default function ContactsScreen() {
           </View>
         </View>
       </Modal>
+
+      <Modal visible={profileOpen} transparent animationType="fade" onRequestClose={closeContactProfile}>
+        <View style={styles.modalBackdrop}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={closeContactProfile} />
+
+          <View style={styles.contactProfileCard}>
+            <TouchableOpacity
+              onPress={closeContactProfile}
+              activeOpacity={0.8}
+              style={styles.contactProfileCloseBtn}
+          >
+              <Text style={styles.contactProfileCloseText}>X</Text>
+            </TouchableOpacity>
+
+          <View style={styles.contactProfileTopRow}>
+            <View style={styles.contactProfileRightColumn}>
+              <View
+                style={[
+                  styles.contactProfileBubbleOuter,
+                  selectedContactOnline ? styles.contactProfileBubbleOuterOnline : null,
+                ]}
+              >
+                {!selectedContactOnline && (
+                  <>
+                    <LinearGradient colors={GLASS_COLORS} style={StyleSheet.absoluteFill} />
+                    <LinearGradient colors={HIGHLIGHT_COLORS} style={StyleSheet.absoluteFill} />
+                  </>
+                )}
+
+
+                <View style={styles.contactProfileBubbleInner}>
+                  {selectedContact?.avatarUrl ? (
+                    <Image
+                      source={{ uri: selectedContact.avatarUrl }}
+                      style={styles.contactProfileAvatarImage}
+                    />
+                  ) : (
+                    <Text style={styles.contactProfileFallbackLetter}>
+                      {initialFromUsername(selectedContact?.username, "Y")}
+                    </Text>
+                  )}
+                </View>
+              </View>
+
+
+              <Text style={styles.contactProfileUsername}>
+                {selectedContact?.username ?? ""}
+              </Text>
+            </View>
+          </View>
+
+          <View style={styles.contactProfileBody}>
+            <Text style={styles.contactProfilePlaceholder}>Yap score:</Text>
+            <Text style={styles.contactProfilePlaceholder}>yapees:</Text>
+            <Text style={styles.contactProfilePlaceholder}>yappers:</Text>
+          </View>
+
+          <View style={styles.contactProfileBottomRow}>
+            <TouchableOpacity
+              activeOpacity={0.85}
+              onPress={sendYapToSelectedContact}
+              disabled={!selectedContact || sendingYap}
+              style={[
+                styles.contactProfileYapBtn,
+                { opacity: !selectedContact || sendingYap ? 0.6 : 1 },
+              ]}
+            >
+                <Text style={styles.contactProfileYapBtnText}>
+                  {sendingYap ? t("common.sending") : "Yap!"}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
+
 }
 
 
@@ -461,7 +608,7 @@ const styles = StyleSheet.create({
 
   modalBackdrop: {
     flex: 1,
-    backgroundColor: "rgba(37, 17, 17, 0.25)",
+    backgroundColor: "rgba(37, 17, 17, 0.6)",
     alignItems: "center",
     justifyContent: "center",
     paddingHorizontal: 18,
@@ -571,5 +718,129 @@ const styles = StyleSheet.create({
   contactBubbleOuterOnline: {
     backgroundColor: "#00d13b",
   },
+
+  contactProfileCard: {
+  width: "100%",
+  maxWidth: 420,
+  minHeight: 360,
+  borderRadius: 22,
+  padding: 18,
+  backgroundColor: "rgba(255, 0, 21, 0.95)",
+  borderWidth: 1,
+  borderColor: "rgba(255,255,255,0.9)",
+},
+
+contactProfileCloseBtn: {
+  position: "absolute",
+  top: 14,
+  left: 14,
+  zIndex: 2,
+  paddingHorizontal: 10,
+  paddingVertical: 6,
+  borderRadius: 999,
+  backgroundColor: "#ffffff",
+},
+
+contactProfileCloseText: {
+  color: "#000000",
+  fontWeight: "900",
+  fontSize: 14,
+},
+
+contactProfileTopRow: {
+  flexDirection: "row",
+  justifyContent: "flex-end",
+  marginTop: 0,
+},
+
+contactProfileRightColumn: {
+  alignItems: "center",
+  justifyContent: "flex-start",
+  gap: 10,
+},
+
+contactProfileBubbleOuter: {
+  width: 72,
+  height: 72,
+  borderRadius: 999,
+  overflow: "hidden",
+  alignItems: "center",
+  justifyContent: "center",
+},
+
+contactProfileBubbleOuterOnline: {
+  backgroundColor: "#00d13b",
+},
+
+contactProfileBubbleInner: {
+  width: 63,
+  height: 63,
+  borderRadius: 999,
+  backgroundColor: "rgba(255,255,255,0.7)",
+  overflow: "hidden",
+  alignItems: "center",
+  justifyContent: "center",
+},
+
+contactProfileAvatarImage: {
+  width: "100%",
+  height: "100%",
+  borderRadius: 999,
+},
+
+contactProfileFallbackLetter: {
+  color: "#ff0015ff",
+  fontWeight: "900",
+  fontSize: 30,
+  includeFontPadding: false,
+},
+
+contactProfileNameWrap: {
+  alignItems: "center",
+  paddingLeft: 0,
+},
+
+contactProfileUsername: {
+  fontSize: 22,
+  fontWeight: "900",
+  color: "#ffffff",
+  textAlign: "center",
+},
+
+contactProfileBody: {
+  flex: 1,
+  justifyContent: "center",
+  paddingTop: 20,
+  paddingBottom: 20,
+},
+
+contactProfilePlaceholder: {
+  fontSize: 22,
+  fontWeight: "900",
+  color: "#ffffff",
+  marginBottom: 8,
+},
+
+contactProfileBottomRow: {
+  flexDirection: "row",
+  justifyContent: "flex-end",
+  alignItems: "flex-end",
+  marginTop: 12,
+},
+
+contactProfileYapBtn: {
+  backgroundColor: "#00d13b",
+  borderRadius: 999,
+  paddingHorizontal: 18,
+  paddingVertical: 10,
+  borderWidth: 1,
+  borderColor: "white",
+},
+
+contactProfileYapBtnText: {
+  color: "#fff",
+  fontWeight: "900",
+  fontSize: 16,
+},
  
 });

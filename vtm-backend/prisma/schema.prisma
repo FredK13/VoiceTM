@@ -106,6 +106,8 @@ model User {
   rejoinInvitesSent     ConversationRejoinInvite[] @relation("RejoinFrom")
   rejoinInvitesReceived ConversationRejoinInvite[] @relation("RejoinTo")
 
+  fakeBubbles FakeBubble[]
+
   @@index([usernameNorm])
   @@index([emailHash])
   @@index([lastSeenAt])
@@ -232,6 +234,25 @@ model EmojiProfile {
 
   updatedAt DateTime @updatedAt
 }
+
+model FakeBubble {
+  id String @id @default(cuid())
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId String
+
+  x    Float
+  y    Float
+  vx   Float
+  vy   Float
+  size Float
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@index([userId])
+}
+
 
 model Contact {
   id String @id @default(cuid())

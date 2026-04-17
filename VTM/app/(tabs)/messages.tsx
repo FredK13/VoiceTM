@@ -1,16 +1,16 @@
 ﻿// app/(tabs)/messages.tsx
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, useMemo } from "react";
 import {
   Alert,
-  Dimensions,
   Keyboard,
   Platform,
   StyleSheet,
   Text,
   TouchableOpacity,
   View,
+  useWindowDimensions,
 } from "react-native";
 import { apiFetch, apiJson, isApiError} from "../../lib/api";
 import { getUserId } from "../../lib/session";
@@ -19,7 +19,6 @@ import type {
   Conversation,
   RequestResponse,
 } from "../../lib/types";
-
 import {
   sendJson,
   isWsOpen,
@@ -27,23 +26,25 @@ import {
 import { usePresence } from "../../lib/presence";
 import useProfileInbox from "../hooks/useProfileInbox";
 import RecentlyLeftModal from "../components/RecentlyLeftModal";
-import StarredModal from "../components/StarredModal";
+import FakeBubbleModal from "../components/FakeBubbleModal";
 import ExtrasModal from "../components/ExtrasModal";
-import FloatingConversationField, { type MovingBubble} from "../components/FloatingConversationField";
+import FloatingConversationField, { 
+  type MovingBubble,
+} from "../components/FloatingConversationField";
+import type { BubbleObstacle } from "../utils/bubblePhysics";
 import ChatOverlay, { type ChatOverlayMessage } from "../components/ChatOverlay";
 import useChatAudio from "../hooks/useChatAudio";
 import useConversationRealtime from "../hooks/useConversationRealtime";
 import { mapApiMessageToChatMessage, sortChatMessagesByCreatedAt } from "../../lib/chatMessageMapper";
 import ProfileEntryPoint from "../components/ProfileEntryPoint";
 import useProfileAvatar from "../hooks/useProfileAvatar";
-
-const { height } = Dimensions.get("window");
+import { useLocalSearchParams } from "expo-router";
+import useUnifiedBubbles from "../hooks/useUnifiedBubbles";
 
 
 const INPUT_OFFSET = Platform.OS === "ios" ? 8 : 4;
 
 type ChatMessage = ChatOverlayMessage;
-
 
 // ---------- WS payloads ----------
 type WsMsgNew = {
@@ -69,6 +70,7 @@ function uniqByIdKeepOrder<T extends { id: string }>(arr: T[]) {
 export default function MessagesScreen() {
   const router = useRouter();
   const { t } = useTranslation();
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
 
   const [nowMs, setNowMs] = useState(() => Date.now());
   const [myUserId, setMyUserId] = useState<string | null>(null);
@@ -86,10 +88,61 @@ export default function MessagesScreen() {
   const [starredOpen, setStarredOpen] = useState(false);
   const [extrasOpen, setExtrasOpen] = useState(false);
 
+  const params = useLocalSearchParams<{ openConversationId?: string }>();
+  const openConversationId =
+    typeof params.openConversationId === "string" ? params.openConversationId : null;
+
+  const handledOpenConversationIdRef = useRef<string | null>(null);
+
   
   const presenceClockRef = useRef<any>(null);
 
   const { isUserOnline, } = usePresence();
+
+
+  const OB_PAD = 4;
+  const NAV_SIZE = 60;
+  const RAIL_SIZE = 54;
+  const YAP_W = 85;
+  const YAP_H = 45;
+  const PROFILE_SIZE = 60;
+
+
+  const bubbleObstacles: BubbleObstacle[] = useMemo(
+    () => [
+      {
+        x: 16 - OB_PAD,
+        y: screenHeight * 0.23 - OB_PAD,
+        width: RAIL_SIZE + OB_PAD * 2,
+        height: RAIL_SIZE * 3 + 16 * 2 + OB_PAD * 2,
+      },
+      {
+        x: screenWidth - 16 - PROFILE_SIZE - OB_PAD,
+        y: 52 - OB_PAD,
+        width: PROFILE_SIZE + OB_PAD * 2,
+        height: PROFILE_SIZE + OB_PAD * 2,
+      },
+      {
+        x: 40 - OB_PAD,
+        y: screenHeight - 35 - NAV_SIZE - OB_PAD,
+        width: NAV_SIZE + OB_PAD * 2,
+        height: NAV_SIZE + OB_PAD * 2,
+      },
+      {
+        x: screenWidth - 40 - NAV_SIZE - OB_PAD,
+        y: screenHeight - 35 - NAV_SIZE - OB_PAD,
+        width: NAV_SIZE + OB_PAD * 2,
+        height: NAV_SIZE + OB_PAD * 2,
+      },
+      {
+        x: screenWidth / 2 - YAP_W / 2 - OB_PAD,
+        y: screenHeight - 40 - YAP_H - OB_PAD,
+        width: YAP_W + OB_PAD * 2,
+        height: YAP_H + OB_PAD * 2,
+      },
+    ],
+    [screenWidth, screenHeight]
+  );
 
 
   async function refreshConversations() {
@@ -143,7 +196,57 @@ const {
   setChatMessages,
 });
 
+const {
+  realBubbles,
+  fakeBubbles,
+  addFakeBubble,
+  removeFakeBubble,
+} = useUnifiedBubbles({
+  conversations,
+  obstacles: bubbleObstacles,
+  disabled: false,
+  screenHeight,
+  screenWidth,
+});
 
+const renderedRealBubbles: MovingBubble[] = useMemo(
+  () =>
+    realBubbles
+      .filter((b) => !!b.conversation)
+      .map((b) => ({
+        ...b.conversation!,
+        size: b.size,
+        x: b.x,
+        y: b.y,
+        vx: b.vx,
+        vy: b.vy,
+      })),
+  [realBubbles]
+);
+
+useEffect(() => {
+  if (!openConversationId) return;
+  if (loading) return;
+  if (handledOpenConversationIdRef.current === openConversationId) return;
+
+
+  handledOpenConversationIdRef.current = openConversationId;
+
+
+  openConversationById(openConversationId)
+  .then(() => {
+    router.replace("/messages");
+  })
+  .catch((err) => {
+    console.warn("Failed to open conversation from route param:", err);
+  });
+}, [openConversationId, loading, router]);
+
+useEffect(() => {
+  if (!openConversationId) {
+    handledOpenConversationIdRef.current = null;
+  }
+}, [openConversationId]);
 
 
   useEffect(() => {
@@ -166,11 +269,13 @@ const {
 
   useEffect(() => {
   let cancelled = false;
+
   (async () => {
     try {
       setLoading(true);
       setLoadingError(null);
 
+      await refreshConversations();
 
       if (cancelled) return;
     } catch (err: any) {
@@ -208,18 +313,21 @@ const {
     };
   }, []);
 
+
   async function openConversationById(conversationId: string) {
     const data = await refreshConversations();
-    const convo = conversations.find((c) => c.id === conversationId) ?? data.find((c) => c.id === conversationId);
-      if (!convo) return;
+    const convo =
+      data.find((c) => c.id === conversationId) ??
+      conversations.find((c) => c.id === conversationId);
+
+    if (!convo) return;
 
     setProfileOpen(false);
     await stopCurrentAudio();
     await handleBubblePress(convo);
-
     }
 
-
+  
   async function createConversationRequest(identifier: string) {
     const value = identifier.trim();
     if (!value) return;
@@ -493,7 +601,10 @@ if (payload?.code === "REJOIN_PENDING") {
       )}
 
 
-<View style={styles.leftRail} pointerEvents={activeConversation ? "none" : "auto"}>
+<View 
+  style={[styles.leftRail, { top: screenHeight * 0.23 }]}
+    pointerEvents={activeConversation ? "none" : "auto"}
+>
   <TouchableOpacity
     activeOpacity={0.85}
     style={styles.railBtn}
@@ -511,7 +622,7 @@ if (payload?.code === "REJOIN_PENDING") {
     style={styles.railBtn}
     onPress={() => setStarredOpen(true)}
   >
-    <Text style={styles.railBtnText}>⭐</Text>
+    <Text style={styles.railBtnText}>🫧</Text>
   </TouchableOpacity>
 
 
@@ -520,7 +631,7 @@ if (payload?.code === "REJOIN_PENDING") {
     style={styles.railBtn}
     onPress={() => setExtrasOpen(true)}
   >
-    <Text style={styles.railBtnText}>🧩</Text>
+    <Text style={styles.railBtnText}>💥</Text>
   </TouchableOpacity>
 </View>
 
@@ -570,11 +681,29 @@ if (payload?.code === "REJOIN_PENDING") {
   }}
 />
 
-<StarredModal
+<FakeBubbleModal
   visible={starredOpen}
   onClose={() => setStarredOpen(false)}
   t={t}
+  fakeBubbles={fakeBubbles}
+  onAddFakeBubble={() => {
+    addFakeBubble().catch((err: any) => {
+      Alert.alert(
+        t("common.errorTitle"), 
+        err?.message ?? t("errors.requestFailed")
+      );
+    });
+  }}
+  onPopFakeBubble={(id) => {
+  removeFakeBubble(id).catch((err: any) => {
+    Alert.alert(
+      t("common.errorTitle"),
+      err?.message ?? t("errors.requestFailed")
+    );
+  });
+}}
 />
+
 
 <ExtrasModal
   visible={extrasOpen}
@@ -584,7 +713,7 @@ if (payload?.code === "REJOIN_PENDING") {
 
 
 <FloatingConversationField
-  conversations={conversations}
+  bubbles={renderedRealBubbles}
   disabled={!!activeConversation}
   nowMs={nowMs}
   isUserOnline={isUserOnline}
@@ -595,6 +724,7 @@ if (payload?.code === "REJOIN_PENDING") {
     handleBubbleLongPress(bubble);
   }}
 />
+
 
       {/* Yap button */}
       <View style={styles.yapButtonWrapper} pointerEvents={activeConversation ? "none" : "auto"}>
@@ -743,7 +873,6 @@ const styles = StyleSheet.create({
   leftRail: { 
     position: "absolute", 
     left: 16, 
-    top: height * 0.23, 
     zIndex: 28, 
     gap: 16, 
   },
