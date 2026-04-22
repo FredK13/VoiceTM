@@ -31,7 +31,7 @@ import ExtrasModal from "../components/ExtrasModal";
 import FloatingConversationField, { 
   type MovingBubble,
 } from "../components/FloatingConversationField";
-import type { BubbleObstacle } from "../utils/bubblePhysics";
+import type { BubbleObstacle } from "../../lib/bubblePhysics";
 import ChatOverlay, { type ChatOverlayMessage } from "../components/ChatOverlay";
 import useChatAudio from "../hooks/useChatAudio";
 import useConversationRealtime from "../hooks/useConversationRealtime";
@@ -87,6 +87,8 @@ export default function MessagesScreen() {
   const [recentlyLeftOpen, setRecentlyLeftOpen] = useState(false);
   const [starredOpen, setStarredOpen] = useState(false);
   const [extrasOpen, setExtrasOpen] = useState(false);
+  const [openProfileSignal, setOpenProfileSignal] = useState(0);
+  const [closeProfileSignal, setCloseProfileSignal] = useState(0);
 
   const params = useLocalSearchParams<{ openConversationId?: string }>();
   const openConversationId =
@@ -157,13 +159,11 @@ const {
 } = useProfileAvatar({ t });
 
   const {
-  setProfileOpen,
   recentlyLeft,
   loadingRecentlyLeft,
   refreshChatRequests,
   refreshChatOutgoing,
   refreshRecentlyLeft,
-  openProfileAndRefresh,
   } = useProfileInbox({
   t,
   refreshConversations,
@@ -322,12 +322,20 @@ useEffect(() => {
 
     if (!convo) return;
 
-    setProfileOpen(false);
+    requestCloseProfileModal();
     await stopCurrentAudio();
     await handleBubblePress(convo);
     }
 
-  
+
+  function requestOpenProfileModal() {
+    setOpenProfileSignal((prev) => prev + 1);
+  }
+
+  function requestCloseProfileModal() {
+    setCloseProfileSignal((prev) => prev +1);
+  }
+
   async function createConversationRequest(identifier: string) {
     const value = identifier.trim();
     if (!value) return;
@@ -352,31 +360,39 @@ useEffect(() => {
     }
 
     if (res.status === "REJOIN_SENT") {
-  Alert.alert(
-    t("common.rejoinRequestSentTitle"),
-    t("common.rejoinRequestSentBody"),
-    [{ text: t("common.open"), onPress: () => openProfileAndRefresh().catch(() => {}) }]
-  );
-  await refreshChatOutgoing();
-  return;
-}
+      await refreshChatOutgoing();
+      
+      Alert.alert(
+        t("common.rejoinRequestSentTitle"),
+        t("common.rejoinRequestSentBody"),
+        [{ text: t("common.open"), onPress: () => requestOpenProfileModal() }]
+      );
+      return;
+    }
 
 
     if (res.status === "INCOMING_PENDING") {
+      await refreshChatRequests();
+
       Alert.alert(
         t("common.requestWaitingTitle"),
         t("common.requestWaitingBody"),
         [
-          { text: t("common.open"), onPress: () => openProfileAndRefresh().catch(() => {}) },
+          { text: t("common.open"), onPress: () => requestOpenProfileModal() },
           { text: t("common.cancel"), style: "cancel" },
         ]
       );
       return;
     }
 
-
-    Alert.alert(t("common.sent"), t("common.requestSent"));
     await refreshChatOutgoing();
+
+    Alert.alert(
+      t("common.sent"),
+      t("common.requestSent"),
+      [{text: t("common.okay"), onPress: () => requestOpenProfileModal() }]
+    );
+    
   }
 
 
@@ -508,6 +524,12 @@ useEffect(() => {
         json: { text },
       });
 
+      const rejoinRequestSent = !!saved?.rejoinRequestSent;
+      const rejoinTargetUsername = 
+        typeof saved?.rejoinTargetUsername === "string"
+          ? saved.rejoinTargetUsername
+          : null;
+
 
       const savedId = String(saved.id);
       const finalMsg: ChatMessage = mapApiMessageToChatMessage(saved, myUserId);
@@ -534,6 +556,31 @@ useEffect(() => {
       } satisfies WsMsgNew);
       }
 
+      if (rejoinRequestSent) {
+        await refreshChatOutgoing().catch(() => {});
+        await refreshChatRequests().catch(() => {});
+
+      Alert.alert(
+        t("common.rejoinRequestSentTitle"),
+        rejoinTargetUsername
+          ? t("common.rejoinMessageSentBody", { username: rejoinTargetUsername })
+          : t("common.rejoinRequestSentBody"),
+        [
+          {
+            text: t("common.okay"),
+            onPress: async () => {
+              await stopCurrentAudio().catch(() => {});
+              setActiveConversation(null);
+              setChatMessages([]);
+              setDraft("");
+              disconnectWs?.();
+              requestOpenProfileModal();
+            },
+          },
+        ]
+      );
+    }
+
 
     } catch (err: any) {
       console.warn("Failed to send message:", err);
@@ -559,15 +606,20 @@ if (payload?.code === "REJOIN_PENDING") {
 
 
   // ✅ open profile + refresh
-  await openProfileAndRefresh().catch(() => {});
-
+  await refreshChatOutgoing().catch(() => {});
+  await refreshChatRequests().catch(() => {});
 
   Alert.alert(
-  t("common.rejoinPendingTitle"),
-  payload?.action === "OPEN_PENDING" 
-    ? t("common.rejoinPendingOpenPending")
-    : t("common.rejoinPendingOpenRequests"),
-  [{ text: t("common.okay") }]
+    t("common.rejoinPendingTitle"),
+    payload?.action === "OPEN_PENDING" 
+      ? t("common.rejoinPendingOpenPending")
+      : t("common.rejoinPendingOpenRequests"),
+    [
+      { 
+        text: t("common.okay"),
+        onPress: () => requestOpenProfileModal(),
+      },
+    ]
   );
 
   return;
@@ -762,6 +814,8 @@ if (payload?.code === "REJOIN_PENDING") {
         router={router}
         refreshConversations={refreshConversations}
         disabled={!!activeConversation}
+        openProfileSignal={openProfileSignal}
+        closeProfileSignal={closeProfileSignal}
         onAcceptedConversation={(conversationId) => openConversationById(conversationId)}
         onOpenContacts={() => {
           router.push("/contacts");

@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useRef } from "react";
 import { Alert } from "react-native";
 import type { TFunction } from "i18next";
 import ProfileLauncher from "./ProfileLauncher";
@@ -22,6 +22,8 @@ type Props = {
   disabled?: boolean;
   onAcceptedConversation?: (conversationId: string) => Promise<void> | void;
   onOpenContacts?: () => void;
+  openProfileSignal?: number;
+  closeProfileSignal?: number;
 };
 
 
@@ -32,6 +34,8 @@ export default function ProfileEntryPoint({
   disabled = false,
   onAcceptedConversation,
   onOpenContacts,
+  openProfileSignal = 0,
+  closeProfileSignal = 0,
 }: Props) {
   const {
     myAvatarUrl,
@@ -66,6 +70,27 @@ export default function ProfileEntryPoint({
 
 
   useRefreshOnFocus(refreshAllProfileInbox);
+
+   const lastOpenProfileSignalRef = useRef<number>(0);
+   const lastCloseProfileSignalRef = useRef<number>(0);
+
+    useEffect(() => {
+      if (!openProfileSignal) return;
+      if (lastOpenProfileSignalRef.current === openProfileSignal) return;
+
+      lastOpenProfileSignalRef.current = openProfileSignal;
+        openProfileAndRefresh().catch(() => {});
+    }, [openProfileSignal, openProfileAndRefresh]);
+
+    useEffect(() => {
+      if (!closeProfileSignal) return;
+      if (lastCloseProfileSignalRef.current === closeProfileSignal) return;
+
+
+      lastCloseProfileSignalRef.current = closeProfileSignal;
+        setProfileOpen(false);
+    }, [closeProfileSignal, setProfileOpen]);
+
 
 
   async function acceptChatRequest(item: IncomingInvite | IncomingRejoinInvite | any) {

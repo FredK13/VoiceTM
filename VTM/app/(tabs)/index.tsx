@@ -1,5 +1,5 @@
 // app/index.tsx
-import { View, Text, TouchableOpacity, StyleSheet, Alert } from "react-native";
+import { View, Text, TouchableOpacity, StyleSheet, } from "react-native";
 import { useTranslation } from "react-i18next";
 import { useRouter } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";

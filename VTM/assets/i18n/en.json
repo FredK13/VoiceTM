@@ -73,9 +73,9 @@
     "enterUsernameOrEmailToRequest": "Enter username or email to send a request",
     "block": "Block",
     "rejoinRequestSentTitle": "Rejoin request sent",
-    "rejoinRequestSentBody": "They’ll see it in Requests. Once they accept, the chat will reopen.",
+    "rejoinRequestSentBody": "Once acceped, the chat will reopen.", 
     "rejoinPendingTitle": "Request waiting",
-    "rejoinPendingOpenPending": "You already sent a rejoin request. Check Pending in your Profile.",
+    "rejoinPendingOpenPending": "You already sent a rejoin request. Check your Profile.",
     "rejoinPendingOpenRequests": "You have a request waiting. Check Requests in your Profile.",
     "okay": "Okay",
     "recentlyLeftTitle": "Recently left",
@@ -89,7 +89,8 @@
     "receiptPosted": "posted",
     "receiptListened": "listened",
     "receiptIndicator": "yappin...",
-    "unknownUser": "Unknown"
+    "unknownUser": "Unknown",
+    "rejoinMessageSentBody": "{{username}} has left, request sent."
   },
 
   "settings": {

@@ -783,7 +783,12 @@ if (pendingRejoin) {
         leftAt: { not: null },
         userId: { not: senderId },
       },
-      select: { userId: true },
+      select: { 
+        userId: true,
+        user: {
+          select: { username: true },
+        },
+      },
     });
 
 
@@ -837,8 +842,14 @@ if (pendingRejoin) {
       },
     });
 
+    const firstLeftUsername = leftMembers[0]?.user?.username ?? null;
 
-    return res.status(201).json(finalMessage ?? baseMessage);
+    return res.status(201).json({
+      ...(finalMessage ?? baseMessage),
+      rejoinRequestSent: leftMembers.length > 0,
+      rejoinTargetUsername: firstLeftUsername,
+    });
+
   } catch (err) {
     next(err);
   }

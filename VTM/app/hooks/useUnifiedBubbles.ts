@@ -10,7 +10,7 @@ import {
   type BubbleObstacle,
   type PhysicsBounds,
   type PhysicsBubble,
-} from "../utils/bubblePhysics";
+} from "../../lib/bubblePhysics";
 
 
 const REAL_SIZE_RATIO = 0.21 * 0.77;
