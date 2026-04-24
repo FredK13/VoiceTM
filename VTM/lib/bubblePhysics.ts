@@ -32,9 +32,6 @@ export type StepBubblesArgs<T extends PhysicsBubble> = {
   dt: number;
   bounds: PhysicsBounds;
   obstacles?: BubbleObstacle[];
-  speedMin?: number;
-  speedMax?: number;
-  damping?: number;
 };
 
 
@@ -50,12 +47,6 @@ export function clamp(n: number, min: number, max: number) {
 
 export function length(x: number, y: number) {
   return Math.sqrt(x * x + y * y);
-}
-
-
-export function normalize(x: number, y: number) {
-  const len = length(x, y) || 0.0001;
-  return { x: x / len, y: y / len };
 }
 
 
@@ -199,37 +190,11 @@ export function resolveBubbleCollision<T extends PhysicsBubble>(
   return true;
 }
 
-
-export function applySpeedClamp<T extends PhysicsBubble>(
-  bubble: T,
-  speedMin?: number,
-  speedMax?: number
-) {
-  if (typeof speedMin !== "number" && typeof speedMax !== "number") return;
-
-
-  const currentSpeed = length(bubble.vx, bubble.vy);
-  if (!currentSpeed) return;
-
-
-  const min = typeof speedMin === "number" ? speedMin : currentSpeed;
-  const max = typeof speedMax === "number" ? speedMax : currentSpeed;
-  const nextSpeed = clamp(currentSpeed, min, max);
-  const dir = normalize(bubble.vx, bubble.vy);
-
-
-  bubble.vx = dir.x * nextSpeed;
-  bubble.vy = dir.y * nextSpeed;
-}
-
-
 export function stepBubbles<T extends PhysicsBubble>({
   bubbles,
   dt,
   bounds,
   obstacles = [],
-  speedMin,
-  speedMax,
 }: StepBubblesArgs<T>): T[] {
   const next = bubbles.map((b) => ({ ...b }));
 
@@ -256,7 +221,6 @@ export function stepBubbles<T extends PhysicsBubble>({
 
   for (const b of next) {
     separateFromWalls(b, bounds);
-    applySpeedClamp(b, speedMin, speedMax);
   }
 
 

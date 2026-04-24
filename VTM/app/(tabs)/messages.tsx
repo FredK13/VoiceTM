@@ -28,9 +28,8 @@ import useProfileInbox from "../hooks/useProfileInbox";
 import RecentlyLeftModal from "../components/RecentlyLeftModal";
 import FakeBubbleModal from "../components/FakeBubbleModal";
 import ExtrasModal from "../components/ExtrasModal";
-import FloatingConversationField, { 
-  type MovingBubble,
-} from "../components/FloatingConversationField";
+import FloatingConversationField from "../components/FloatingConversationField";
+import type { MovingBubble } from "../components/FloatingConversationField";
 import type { BubbleObstacle } from "../../lib/bubblePhysics";
 import ChatOverlay, { type ChatOverlayMessage } from "../components/ChatOverlay";
 import useChatAudio from "../hooks/useChatAudio";
@@ -39,7 +38,7 @@ import { mapApiMessageToChatMessage, sortChatMessagesByCreatedAt } from "../../l
 import ProfileEntryPoint from "../components/ProfileEntryPoint";
 import useProfileAvatar from "../hooks/useProfileAvatar";
 import { useLocalSearchParams } from "expo-router";
-import useUnifiedBubbles from "../hooks/useUnifiedBubbles";
+import useBubbles from "../hooks/useBubbles";
 
 
 const INPUT_OFFSET = Platform.OS === "ios" ? 8 : 4;
@@ -90,11 +89,19 @@ export default function MessagesScreen() {
   const [openProfileSignal, setOpenProfileSignal] = useState(0);
   const [closeProfileSignal, setCloseProfileSignal] = useState(0);
 
-  const params = useLocalSearchParams<{ openConversationId?: string }>();
+  const params = useLocalSearchParams<{ 
+    openConversationId?: string;
+    openProfile?: string;
+  }>();
+
   const openConversationId =
     typeof params.openConversationId === "string" ? params.openConversationId : null;
 
+  const openProfile = 
+    typeof params.openProfile === "string" ? params.openProfile : null;
+
   const handledOpenConversationIdRef = useRef<string | null>(null);
+  const handledOpenProfileRef = useRef<string | null>(null);
 
   
   const presenceClockRef = useRef<any>(null);
@@ -197,11 +204,11 @@ const {
 });
 
 const {
-  realBubbles,
+  allBubbles,
   fakeBubbles,
   addFakeBubble,
   removeFakeBubble,
-} = useUnifiedBubbles({
+} = useBubbles({
   conversations,
   obstacles: bubbleObstacles,
   disabled: false,
@@ -209,20 +216,9 @@ const {
   screenWidth,
 });
 
-const renderedRealBubbles: MovingBubble[] = useMemo(
-  () =>
-    realBubbles
-      .filter((b) => !!b.conversation)
-      .map((b) => ({
-        ...b.conversation!,
-        size: b.size,
-        x: b.x,
-        y: b.y,
-        vx: b.vx,
-        vy: b.vy,
-      })),
-  [realBubbles]
-);
+function clearMessagesRouteParams() {
+  router.replace("/messages");
+}
 
 useEffect(() => {
   if (!openConversationId) return;
@@ -235,7 +231,7 @@ useEffect(() => {
 
   openConversationById(openConversationId)
   .then(() => {
-    router.replace("/messages");
+    clearMessagesRouteParams();
   })
   .catch((err) => {
     console.warn("Failed to open conversation from route param:", err);
@@ -247,6 +243,28 @@ useEffect(() => {
     handledOpenConversationIdRef.current = null;
   }
 }, [openConversationId]);
+
+  useEffect(() => {
+  if (!openProfile) return;
+  if (loading) return;
+  if (handledOpenProfileRef.current === openProfile) return;
+
+
+  handledOpenProfileRef.current = openProfile;
+
+
+  requestOpenProfileModal();
+  clearMessagesRouteParams();
+}, [openProfile, loading, router]);
+
+
+useEffect(() => {
+  if (!openProfile) {
+    handledOpenProfileRef.current = null;
+  }
+}, [openProfile]);
+
+
 
 
   useEffect(() => {
@@ -320,13 +338,37 @@ useEffect(() => {
       data.find((c) => c.id === conversationId) ??
       conversations.find((c) => c.id === conversationId);
 
+
     if (!convo) return;
 
+
+    const liveBubble = allBubbles.find(
+      (b) => b.conversation && b.conversation.id === conversationId
+    );
+
+
+    const openTarget: MovingBubble = liveBubble?.conversation
+      ? {
+          ...liveBubble.conversation,
+          size: liveBubble.size,
+          x: liveBubble.x,
+          y: liveBubble.y,
+          vx: liveBubble.vx,
+          vy: liveBubble.vy,
+        }
+      : {
+          ...convo,
+          size: 72,
+          x: 0,
+          y: 0,
+          vx: 0,
+          vy: 0,
+        };
+        
     requestCloseProfileModal();
     await stopCurrentAudio();
-    await handleBubblePress(convo);
-    }
-
+    await handleBubblePress(openTarget);
+  };
 
   function requestOpenProfileModal() {
     setOpenProfileSignal((prev) => prev + 1);
@@ -422,7 +464,7 @@ useEffect(() => {
     }
   }
 
-  async function handleDeleteConversation(bubble: Conversation | MovingBubble) {
+  async function handleDeleteConversation(bubble: MovingBubble) {
   try {
     await stopCurrentAudio().catch(() => {});
 
@@ -449,7 +491,7 @@ useEffect(() => {
   }
 }
 
-  function handleBubbleLongPress(bubble: Conversation | MovingBubble) {
+  function handleBubbleLongPress(bubble: MovingBubble) {
     Alert.alert(
       bubble.title,
       t("common.deleteThisChat"),
@@ -462,7 +504,7 @@ useEffect(() => {
   }
 
 
-  async function handleBubblePress(bubble: Conversation | MovingBubble) {
+  async function handleBubblePress(bubble: MovingBubble) {
     setActiveConversation(bubble);
     setChatMessages([]);
     setDraft("");
@@ -716,8 +758,7 @@ if (payload?.code === "REJOIN_PENDING") {
             onPress: async () => {
               try {
                 await createConversationRequest(username);
-                await refreshChatOutgoing();
-                await refreshChatRequests();
+
               } catch (err: any) {
                 console.warn("Failed to send rejoin request:", err);
                 Alert.alert(
@@ -747,14 +788,6 @@ if (payload?.code === "REJOIN_PENDING") {
       );
     });
   }}
-  onPopFakeBubble={(id) => {
-  removeFakeBubble(id).catch((err: any) => {
-    Alert.alert(
-      t("common.errorTitle"),
-      err?.message ?? t("errors.requestFailed")
-    );
-  });
-}}
 />
 
 
@@ -766,7 +799,7 @@ if (payload?.code === "REJOIN_PENDING") {
 
 
 <FloatingConversationField
-  bubbles={renderedRealBubbles}
+  bubbles={allBubbles}
   disabled={!!activeConversation}
   nowMs={nowMs}
   isUserOnline={isUserOnline}
@@ -775,6 +808,14 @@ if (payload?.code === "REJOIN_PENDING") {
   }}
   onLongPressBubble={(bubble) => {
     handleBubbleLongPress(bubble);
+  }}
+  onLongPressFakeBubble={(id) => {
+    removeFakeBubble(id).catch((err: any) => {
+      Alert.alert(
+        t("common.errorTitle"),
+        err?.message ?? t("errors.requestFailed")
+      );
+    });
   }}
 />
 

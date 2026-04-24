@@ -1,4 +1,4 @@
-// app/hooks/useUnifiedBubbles.ts
+// app/hooks/useBubbles.ts
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiJson } from "../../lib/api";
 import type { Conversation } from "../../lib/types";
@@ -13,15 +13,11 @@ import {
 } from "../../lib/bubblePhysics";
 
 
-const REAL_SIZE_RATIO = 0.21 * 0.77;
-const FAKE_SIZE_RATIO = 0.15;
+const CHAT_BUBBLE_SIZE_RATIO = 0.21* 0.77;
+const FAKE_BUBBLE_SIZE_RATIO = 0.15;
 
-
-const REAL_SPEED_MIN = 18;
-const REAL_SPEED_MAX = 26;
-const FAKE_SPEED_MIN = 12;
-const FAKE_SPEED_MAX = 20;
-
+const BUBBLE_SPEED_MIN = 14;
+const BUBBLE_SPEED_MAX = 24;
 
 const TOP_BOUNDARY_RATIO = 0.05;
 const BOTTOM_BOUNDARY_RATIO = 0.9;
@@ -31,12 +27,7 @@ const WALL_PADDING = 4;
 export const MAX_FAKE_BUBBLES = 4;
 
 
-
-export type UnifiedBubbleKind = "real" | "fake";
-
-
-export type UnifiedBubble = PhysicsBubble & {
-  kind: UnifiedBubbleKind;
+export type BubbleItem = PhysicsBubble & {
   conversation?: Conversation;
 };
 
@@ -75,22 +66,29 @@ function makeVelocity(speedMin: number, speedMax: number) {
 }
 
 
-function createRealBubble(
+function createChatBubble(
   conversation: Conversation,
-  screenWidth: number,
+  existing: BubbleItem[],
+  obstacles: BubbleObstacle[],
+  bounds: PhysicsBounds,
   bubbleSize: number,
-  topBoundary: number,
-  bottomBoundary: number
-): UnifiedBubble
+): BubbleItem
  {
-  const { vx, vy } = makeVelocity(REAL_SPEED_MIN, REAL_SPEED_MAX);
+  const { vx, vy } = makeVelocity(BUBBLE_SPEED_MIN, BUBBLE_SPEED_MAX);
+
+  const spawn = findSpawnPosition ({
+    size: bubbleSize,
+    bounds,
+    existingBubbles: existing,
+    obstacles,
+    maxTries: 30,
+  });
 
   return {
     id: conversation.id,
-    kind: "real",
     size: bubbleSize,
-    x: Math.random() * Math.max(1, screenWidth - bubbleSize),
-    y: topBoundary + Math.random() * Math.max(1, bottomBoundary - topBoundary - bubbleSize),
+    x: spawn.x,
+    y: spawn.y,
     vx,
     vy,
     conversation,
@@ -99,12 +97,12 @@ function createRealBubble(
 
 
 function createFakeBubble(
-  existing: UnifiedBubble[],
+  existing: BubbleItem[],
   obstacles: BubbleObstacle[],
   bounds: PhysicsBounds,
   bubbleSize: number
-): UnifiedBubble {
-  const { vx, vy } = makeVelocity(FAKE_SPEED_MIN, FAKE_SPEED_MAX);
+): BubbleItem {
+  const { vx, vy } = makeVelocity(BUBBLE_SPEED_MIN, BUBBLE_SPEED_MAX);
 
   const spawn = findSpawnPosition({
     size: bubbleSize,
@@ -117,7 +115,6 @@ function createFakeBubble(
 
   return {
     id: `fake:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`,
-    kind: "fake",
     size: bubbleSize,
     x: spawn.x,
     y: spawn.y,
@@ -126,10 +123,9 @@ function createFakeBubble(
   };
 }
 
-function mapApiFakeBubbleToUnifiedBubble(row: ApiFakeBubble): UnifiedBubble {
+function mapApiFakeBubbleToBubble(row: ApiFakeBubble): BubbleItem {
     return {
       id: row.id,
-      kind: "fake",
       size: row.size,
       x: row.x,
       y: row.y,
@@ -139,26 +135,26 @@ function mapApiFakeBubbleToUnifiedBubble(row: ApiFakeBubble): UnifiedBubble {
   }
 
 
-export default function useUnifiedBubbles({
+export default function useBubbles({
   conversations,
   obstacles = [],
   disabled = false,
   screenHeight,
   screenWidth,
 }: Args) {
-  const [bubbles, setBubbles] = useState<UnifiedBubble[]>([]);
+  const [bubbles, setBubbles] = useState<BubbleItem[]>([]);
   const lastTimeRef = useRef<number>(Date.now());
   const frameRef = useRef<number>(0);
   const loadedFakeBubblesRef = useRef(false);
 
-const realBubbleSize = useMemo(
-  () => screenWidth * REAL_SIZE_RATIO,
+const chatBubbleSize = useMemo(
+  () => screenWidth * CHAT_BUBBLE_SIZE_RATIO,
   [screenWidth]
 );
 
 
 const fakeBubbleSize = useMemo(
-  () => screenWidth * FAKE_SIZE_RATIO,
+  () => screenWidth * FAKE_BUBBLE_SIZE_RATIO,
   [screenWidth]
 );
 
@@ -200,11 +196,11 @@ const bounds = useMemo<PhysicsBounds>(
 
 
         const safeRows = Array.isArray(rows) ? rows : [];
-        const hydratedFakeBubbles = safeRows.map(mapApiFakeBubbleToUnifiedBubble);
+        const hydratedFakeBubbles = safeRows.map(mapApiFakeBubbleToBubble);
 
 
         setBubbles((prev) => {
-          const realOnly = prev.filter((b) => b.kind === "real");
+          const realOnly = prev.filter((b) => !!b.conversation);
           return [...realOnly, ...hydratedFakeBubbles];
         });
 
@@ -224,21 +220,21 @@ const bounds = useMemo<PhysicsBounds>(
   const syncRealBubbles = useCallback(() => {
     setBubbles((prev) => {
       const prevRealMap = new Map(
-        prev.filter((b) => b.kind === "real").map((b) => [b.id, b] as const)
+        prev.filter((b) => !!b.conversation).map((b) => [b.id, b] as const)
       );
 
 
-      const nextReal: UnifiedBubble[] = conversations.map((conversation) => {
+      const nextReal: BubbleItem[] = conversations.map((conversation) => {
         const existing = prevRealMap.get(conversation.id);
 
 
         if (!existing) {
-          return createRealBubble(
+          return createChatBubble(
             conversation,
-            screenWidth,
-            realBubbleSize,
-            topBoundary,
-            bottomBoundary
+            prev,
+            obstacles,
+            bounds,
+            chatBubbleSize,
           );
         }
 
@@ -249,10 +245,10 @@ const bounds = useMemo<PhysicsBounds>(
       });
 
 
-      const nextFake = prev.filter((b) => b.kind === "fake");
+      const nextFake = prev.filter((b) => !b.conversation);
       return [...nextReal, ...nextFake];
     });
-  }, [conversations, screenWidth, realBubbleSize, topBoundary, bottomBoundary]);
+  }, [conversations, chatBubbleSize, obstacles, bounds]);
 
 
   useEffect(() => {
@@ -311,7 +307,7 @@ const bounds = useMemo<PhysicsBounds>(
 
    const addFakeBubble = useCallback(async () => {
     const existing = bubbles;
-    const fakeCount = existing.filter((b) => b.kind === "fake").length;
+    const fakeCount = existing.filter((b) => !b.conversation).length;
     if (fakeCount >= MAX_FAKE_BUBBLES) return;
 
 
@@ -330,10 +326,10 @@ const bounds = useMemo<PhysicsBounds>(
         },
       });
 
-        const hydrated = mapApiFakeBubbleToUnifiedBubble(saved);
+        const hydrated = mapApiFakeBubbleToBubble(saved);
 
           setBubbles((prev) => {
-            const fakeCountNow = prev.filter((b) => b.kind === "fake").length;
+            const fakeCountNow = prev.filter((b) => !b.conversation).length;
             if (fakeCountNow >= MAX_FAKE_BUBBLES) return prev;
 
 
@@ -358,7 +354,7 @@ const bounds = useMemo<PhysicsBounds>(
 
 
       setBubbles((prev) =>
-        prev.filter((b) => !(b.kind === "fake" && b.id === id))
+        prev.filter((b) => !(!b.conversation && b.id === id))
       );
     } catch (err) {
       console.warn("Failed to delete fake bubble:", err);
@@ -366,22 +362,13 @@ const bounds = useMemo<PhysicsBounds>(
     }
   }, []);
 
-
-  const realBubbles = useMemo(
-    () => bubbles.filter((b): b is UnifiedBubble & { kind: "real"; conversation: Conversation } => b.kind === "real" && !!b.conversation),
-    [bubbles]
-  );
-
-
   const fakeBubbles = useMemo(
-    () => bubbles.filter((b): b is UnifiedBubble & { kind: "fake" } => b.kind === "fake"),
+    () => bubbles.filter((b): b is BubbleItem => !b.conversation),
     [bubbles]
   );
-
 
   return {
     allBubbles: bubbles,
-    realBubbles,
     fakeBubbles,
     addFakeBubble,
     removeFakeBubble,

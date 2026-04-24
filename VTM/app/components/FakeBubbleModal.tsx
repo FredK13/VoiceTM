@@ -7,33 +7,16 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { LinearGradient } from "expo-linear-gradient";
-import { MAX_FAKE_BUBBLES, type UnifiedBubble } from "../hooks/useUnifiedBubbles";
-
-
-const GLASS_COLORS = [
-  "rgba(255, 255, 255, 0.58)",
-  "rgba(255, 255, 255, 0.2)",
-  "rgba(180, 220, 255, 0.35)",
-  "rgba(255, 180, 220, 0.25)",
-] as const;
-
-
-const HIGHLIGHT_COLORS = [
-  "rgba(255,255,255,0.35)",
-  "rgba(255,255,255,0)",
-] as const;
-
+import { MAX_FAKE_BUBBLES, type BubbleItem } from "../hooks/useBubbles";
 
 
 type Props = {
   visible: boolean;
   onClose: () => void;
   t: (key: string, options?: any) => string;
-  fakeBubbles: UnifiedBubble[];
+  fakeBubbles: BubbleItem[];
   onAddFakeBubble: () => void | Promise<void>;
-  onPopFakeBubble: (id: string) => void | Promise<void>;
-  popMode?: boolean;
+  
 };
 
 
@@ -43,69 +26,10 @@ function FakeBubbleModal({
   t,
   fakeBubbles,
   onAddFakeBubble,
-  onPopFakeBubble,
-  popMode = false,
 }: Props) {
 
 
   return (
-    <>
-      {fakeBubbles.map((b) => (
-        <View
-          key={b.id}
-          pointerEvents="box-none"
-          style={[
-            styles.fakeBubbleWrap,
-            {
-              left: b.x,
-              top: b.y,
-              width: b.size,
-              height: b.size,
-            },
-          ]}
-        >
-          <TouchableOpacity
-            activeOpacity={0.92}
-            style={styles.fakeBubbleTouch}
-            onPress={() => {
-              if (popMode) onPopFakeBubble(b.id);
-            }}
-            onLongPress={() => onPopFakeBubble(b.id)}
-            delayLongPress={500}
-          >
-            <View
-              style={[
-                styles.fakeBubbleOuter,
-                {
-                  width: b.size,
-                  height: b.size,
-                  borderRadius: b.size / 2,
-                },
-              ]}
-            >
-              <LinearGradient colors={GLASS_COLORS} style={StyleSheet.absoluteFill} />
-              <LinearGradient colors={HIGHLIGHT_COLORS} style={StyleSheet.absoluteFill} />
-
-
-              <View
-                style={[
-                  styles.fakeBubbleInner,
-                  {
-                    width: b.size * 0.9,
-                    height: b.size * 0.9,
-                    borderRadius: (b.size * 0.9) /2,
-                  },
-                ]}
-              >
-                <LinearGradient colors={GLASS_COLORS} style={StyleSheet.absoluteFill} />
-                <LinearGradient colors={HIGHLIGHT_COLORS} style={StyleSheet.absoluteFill} />
-              </View>
-            </View>
-          </TouchableOpacity>
-        </View>
-      ))}
-
-
       <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
         <View style={styles.modalBackdrop}>
           <Pressable style={StyleSheet.absoluteFill} onPress={onClose} />
@@ -142,37 +66,11 @@ function FakeBubbleModal({
           </View>
         </View>
       </Modal>
-    </>
   );
 }
 
 
 const styles = StyleSheet.create({
-  fakeBubbleWrap: {
-    position: "absolute",
-    zIndex: 12,
-  },
-
-
-  fakeBubbleTouch: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-
-  fakeBubbleOuter: {
-    overflow: "hidden",
-    alignItems: "center",
-    justifyContent: "center",
-  },
-
-
-  fakeBubbleInner: {
-    overflow: "hidden",
-    opacity: 0.72,
-  },
-
 
   modalBackdrop: {
     flex: 1,
@@ -181,7 +79,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingHorizontal: 18,
   },
-
 
   panel: {
     width: "100%",
@@ -193,7 +90,6 @@ const styles = StyleSheet.create({
     padding: 16,
   },
 
-
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
@@ -201,18 +97,15 @@ const styles = StyleSheet.create({
     marginBottom: 14,
   },
 
-
   headerTitle: {
     fontSize: 22,
   },
-
 
   closeText: {
     fontSize: 16,
     fontWeight: "800",
     color: "#000000",
   },
-
 
   title: {
     fontSize: 18,
@@ -221,18 +114,15 @@ const styles = StyleSheet.create({
     color: "#000000",
   },
 
-
   body: {
     opacity: 0.75,
     fontSize: 14,
     marginBottom: 14,
   },
 
-
   actionCol: {
     gap: 10,
   },
-
 
   primaryBtn: {
     backgroundColor: "#00d13b",
@@ -244,27 +134,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
 
-
   primaryBtnText: {
     color: "#fff",
     fontWeight: "900",
   },
-
-
-  secondaryBtn: {
-    backgroundColor: "#fff",
-    borderRadius: 999,
-    paddingVertical: 11,
-    paddingHorizontal: 14,
-    alignItems: "center",
-  },
-
-
-  secondaryBtnText: {
-    color: "#111",
-    fontWeight: "900",
-  },
-
 
   helperText: {
     marginTop: 4,

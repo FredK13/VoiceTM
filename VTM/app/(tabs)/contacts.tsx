@@ -196,6 +196,12 @@ function closeContactProfile() {
   const user = selectedContact;
   if (!user || sendingYap) return;
 
+  const openMessagesProfile = () => {
+    router.push ({
+      pathname: "/messages",
+      params: { openProfile: String(Date.now())},
+    });
+  };
 
   setSendingYap(true);
   try {
@@ -226,26 +232,58 @@ function closeContactProfile() {
 
 
     if (res.status === "INCOMING_PENDING") {
-      Alert.alert(t("common.requestWaitingTitle"), t("common.requestWaitingBody"));
+      closeContactProfile();
+
+      Alert.alert(
+        t("common.requestWaitingTitle"), 
+        t("common.requestWaitingBody"),
+        [
+          {
+            text: t("common.open"),
+            onPress: openMessagesProfile,
+          },
+          { text: t("common.cancel"), style: "cancel" },
+        ]
+      );
       return;
     }
 
 
     if (res.status === "REJOIN_SENT") {
-      Alert.alert(t("common.rejoinRequestSentTitle"), t("common.rejoinRequestSentBody"));
       closeContactProfile();
+
+      Alert.alert(
+        t("common.rejoinRequestSentTitle"), 
+        t("common.rejoinRequestSentBody"),
+        [
+          {
+            text: t("common.open"),
+            onPress: openMessagesProfile,
+          },
+          { text: t("common.cancel"), style: "cancel" },
+        ]
+      );
       return;
     }
 
+      closeContactProfile();
 
-    Alert.alert(t("common.sent"), t("common.requestSent"));
-    closeContactProfile();
-  } catch (e: any) {
-    Alert.alert(t("common.errorTitle"), e?.message ?? t("common.serverError"));
-  } finally {
-    setSendingYap(false);
+      Alert.alert(
+        t("common.sent"), 
+        t("common.requestSent"),
+        [
+          {
+            text: t("common.okay"),
+            onPress: openMessagesProfile,
+          },
+        ]
+      );
+    } catch (e: any) {
+      Alert.alert(t("common.errorTitle"), e?.message ?? t("common.serverError"));
+    } finally {
+      setSendingYap(false);
+    }
   }
-}
 
 
   function onLongPressContact(u: ContactRow["user"]) {

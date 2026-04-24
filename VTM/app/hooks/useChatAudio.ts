@@ -145,13 +145,6 @@ export function useChatAudio({
             const nowIso = new Date().toISOString();
 
 
-            if (!message.readAt) {
-              apiFetch(`/api/conversations/${convoId}/messages/${message.id}/read`, {
-                method: "POST",
-              }).catch(() => {});
-            }
-
-
             if (!message.listenedAt) {
               apiFetch(`/api/conversations/${convoId}/messages/${message.id}/listened`, {
                 method: "POST",
@@ -188,17 +181,24 @@ export function useChatAudio({
 
       if (auto && !message.listenedAt && conversationId && !message.isMine) {
         try {
-          await apiFetch(`/api/conversations/${conversationId}/messages/${message.id}/read`, {
+          const nowIso = new Date().toISOString();
+
+          await apiFetch(`/api/conversations/${conversationId}/messages/${message.id}/listened`, {
             method: "POST",
           });
 
 
           setChatMessages((prev) =>
             prev.map((m) =>
-              m.id === message.id ? { ...m, readAt: new Date().toISOString() } : m
+              m.id === message.id
+                ? {
+                    ...m,
+                    readAt: m.readAt ?? nowIso,
+                    listenedAt: m.listenedAt ?? nowIso, 
+                  } 
+                : m
             )
           );
-
 
           const ws = getWs();
           if (ws && isWsOpen(ws) && myUserId) {
@@ -206,11 +206,11 @@ export function useChatAudio({
               type: "receipt",
               convoId: conversationId,
               messageId: message.id,
-              status: "read",
+              status: "listened",
             } satisfies WsReceipt);
             }
         } catch (err) {
-          console.warn("Failed to mark message read:", err);
+          console.warn("Failed to mark message listened:", err);
         }
       }
     } catch (err) {

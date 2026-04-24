@@ -8,6 +8,7 @@ import {
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import type { Conversation } from "../../lib/types";
+import type { BubbleItem } from "../hooks/useBubbles";
 
 
 const INNER = 1;
@@ -33,14 +34,17 @@ export type MovingBubble = Conversation & {
   vy: number;
 };
 
+type RenderBubble = BubbleItem & {
+  conversation?: Conversation;
+};
 type Props = {
-  bubbles: MovingBubble[];
+  bubbles: RenderBubble[];
   disabled?: boolean;
   nowMs: number;
   isUserOnline: (userId: string, nowMs?: number) => boolean;
   onPressBubble: (bubble: MovingBubble) => void;
   onLongPressBubble: (bubble: MovingBubble) => void;
-  
+  onLongPressFakeBubble: (id: string) => void | Promise<void>;
 };
 
 
@@ -51,18 +55,30 @@ function FloatingConversationField({
   isUserOnline,
   onPressBubble,
   onLongPressBubble,
-  
+  onLongPressFakeBubble,
 }: Props) {
 
   return (
     <>
       {bubbles.map((b) => {
-        const displayName = (b.otherUsername || b.title || "yap").trim();
-        const innerSize = b.size * INNER;
-        const nameFont = Math.max(10, Math.floor(innerSize * 0.22));
-        const bubbleUserId = b.otherUserId ?? null;
-        const bubbleOnline = bubbleUserId ? isUserOnline(bubbleUserId, nowMs) : false;
+        const isChatBubble = !!b.conversation;
 
+        if (isChatBubble && b.conversation) {
+          const convo = b.conversation;
+          const displayName = (convo.otherUsername || convo.title || "yap").trim();
+          const innerSize = b.size * INNER;
+          const nameFont = Math.max(10, Math.floor(innerSize * 0.22));
+          const bubbleUserId = convo.otherUserId ?? null;
+          const bubbleOnline = bubbleUserId ? isUserOnline(bubbleUserId, nowMs) : false;
+
+          const movingBubble: MovingBubble = {
+            ...convo,
+            size: b.size,
+            x: b.x,
+            y: b.y,
+            vx: b.vx,
+            vy: b.vy,
+          };
 
         return (
           <View
@@ -73,63 +89,60 @@ function FloatingConversationField({
             <TouchableOpacity
               style={styles.touchArea}
               activeOpacity={0.9}
-              onPress={() => onPressBubble(b)}
-              onLongPress={() => onLongPressBubble(b)}
+              onPress={() => onPressBubble(movingBubble)}
+              onLongPress={() => onLongPressBubble(movingBubble)}
               delayLongPress={700}
             >
-              {b.avatarUrl ? (
+              {convo.avatarUrl ? (
                 <View
-  style={{
-    width: innerSize,
-    height: innerSize,
-    borderRadius: innerSize / 2,
-    alignItems: "center",
-    justifyContent: "center",
-  }}
->
-  <View
-    style={[
-      {
-        width: innerSize,
-        height: innerSize,
-        borderRadius: innerSize / 2,
-        overflow: "hidden",
-        alignItems: "center",
-        justifyContent: "center",
-      },
-      bubbleOnline
-        ? { backgroundColor: "#00d13b", padding: ONLINE_RING_WIDTH }
-        : null,
-    ]}
-  >
-    {!bubbleOnline && (
-      <>
-        <LinearGradient colors={GLASS_COLORS} style={StyleSheet.absoluteFill} />
-        <LinearGradient colors={HIGHLIGHT_COLORS} style={StyleSheet.absoluteFill} />
-      </>
-    )}
+                  style={{
+                    width: innerSize,
+                    height: innerSize,
+                    borderRadius: innerSize / 2,
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <View
+                    style={[
+                      {
+                        width: innerSize,
+                        height: innerSize,
+                        borderRadius: innerSize / 2,
+                        overflow: "hidden",
+                        alignItems: "center",
+                        justifyContent: "center",
+                      },
+                      bubbleOnline
+                        ? { backgroundColor: "#00d13b", padding: ONLINE_RING_WIDTH }
+                        : null,
+                    ]}
+                  >
+                    {!bubbleOnline && (
+                      <>
+                        <LinearGradient colors={GLASS_COLORS} style={StyleSheet.absoluteFill} />
+                        <LinearGradient colors={HIGHLIGHT_COLORS} style={StyleSheet.absoluteFill} />
+                      </>
+                    )}
 
-
-    <View
-      style={[
-        styles.bubbleAvatarInner,
-        {
-          width: innerSize - (bubbleOnline ? ONLINE_RING_WIDTH * 2 : OFFLINE_RING_WIDTH * 2),
-          height: innerSize - (bubbleOnline ? ONLINE_RING_WIDTH * 2 : OFFLINE_RING_WIDTH * 2),
-          borderRadius:
-            (innerSize - (bubbleOnline ? ONLINE_RING_WIDTH * 2 : OFFLINE_RING_WIDTH * 2)) / 2,
-        },
-        !bubbleOnline && {
-          overflow: "hidden",
-        },
-      ]}
-    >
-      <Image source={{ uri: b.avatarUrl }} style={styles.bubbleAvatarImage} />
-    </View>
-  </View>
-</View>
-
-
+                    <View
+                      style={[
+                        styles.bubbleAvatarInner,
+                        {
+                          width: innerSize - (bubbleOnline ? ONLINE_RING_WIDTH * 2 : OFFLINE_RING_WIDTH * 2),
+                          height: innerSize - (bubbleOnline ? ONLINE_RING_WIDTH * 2 : OFFLINE_RING_WIDTH * 2),
+                          borderRadius:
+                            (innerSize - (bubbleOnline ? ONLINE_RING_WIDTH * 2 : OFFLINE_RING_WIDTH * 2)) / 2,
+                        },
+                        !bubbleOnline && {
+                          overflow: "hidden",
+                        },
+                      ]}
+                    >
+                      <Image source={{ uri: convo.avatarUrl }} style={styles.bubbleAvatarImage} />
+                    </View>
+                  </View>
+                </View>
               ) : (
                 <View
                   style={[
@@ -152,6 +165,58 @@ function FloatingConversationField({
             </TouchableOpacity>
           </View>
         );
+      }
+ 
+            return (
+              <View
+                key={b.id}
+                pointerEvents="box-none"
+                style={[
+                  styles.fakeBubbleWrap,
+                  {
+                    left: b.x,
+                    top: b.y,
+                    width: b.size,
+                    height: b.size,
+                  },
+                ]}
+              >
+                <TouchableOpacity
+                  activeOpacity={0.92}
+                  style={styles.fakeBubbleTouch}
+                  onLongPress={() => onLongPressFakeBubble(b.id)}
+                  delayLongPress={500}
+                >
+                  <View
+                    style={[
+                      styles.fakeBubbleOuter,
+                      {
+                        width: b.size,
+                        height: b.size,
+                        borderRadius: b.size / 2,
+                      },
+                    ]}
+                  >
+                    <LinearGradient colors={GLASS_COLORS} style={StyleSheet.absoluteFill} />
+                    <LinearGradient colors={HIGHLIGHT_COLORS} style={StyleSheet.absoluteFill} />     
+      
+                    <View
+                      style={[
+                        styles.fakeBubbleInner,
+                        {
+                          width: b.size * 0.9,
+                          height: b.size * 0.9,
+                          borderRadius: (b.size * 0.9) /2,
+                        },
+                      ]}
+                    >
+                      <LinearGradient colors={GLASS_COLORS} style={StyleSheet.absoluteFill} />
+                      <LinearGradient colors={HIGHLIGHT_COLORS} style={StyleSheet.absoluteFill} />
+                    </View>
+                  </View>
+                </TouchableOpacity>
+              </View>
+            );
       })}
     </>
   );
@@ -159,9 +224,16 @@ function FloatingConversationField({
 
 
 const styles = StyleSheet.create({
-  bubbleWrapper: { position: "absolute" },
-  touchArea: { flex: 1, alignItems: "center", justifyContent: "center" },
 
+  bubbleWrapper: { 
+    position: "absolute", 
+  },
+
+  touchArea: { 
+    flex: 1, 
+    alignItems: "center", 
+    justifyContent: "center",
+  },
 
   bubbleAvatarWrap: {
     overflow: "hidden",
@@ -182,13 +254,11 @@ const styles = StyleSheet.create({
     borderRadius: 999,
   },
 
-
   bubbleFallback: {
     overflow: "hidden",
     alignItems: "center",
     justifyContent: "center",
   },
-
 
   bubbleNameText: {
     color: "white",
@@ -196,6 +266,29 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
     textAlign: "center",
   },
+
+  fakeBubbleWrap: {
+    position: "absolute",
+    zIndex: 12,
+  },
+
+  fakeBubbleTouch: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  fakeBubbleOuter: {
+    overflow: "hidden",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  fakeBubbleInner: {
+    overflow: "hidden",
+    opacity: 0.72,
+  },
+
 })
 
 export default React.memo(FloatingConversationField);
