@@ -24,8 +24,6 @@ import {
   isWsOpen,
 } from "../../lib/realtime";
 import { usePresence } from "../../lib/presence";
-import useProfileInbox from "../hooks/useProfileInbox";
-import RecentlyLeftModal from "../components/RecentlyLeftModal";
 import FakeBubbleModal from "../components/FakeBubbleModal";
 import ExtrasModal from "../components/ExtrasModal";
 import FloatingConversationField from "../components/FloatingConversationField";
@@ -36,7 +34,6 @@ import useChatAudio from "../hooks/useChatAudio";
 import useConversationRealtime from "../hooks/useConversationRealtime";
 import { mapApiMessageToChatMessage, sortChatMessagesByCreatedAt } from "../../lib/chatMessageMapper";
 import ProfileEntryPoint from "../components/ProfileEntryPoint";
-import useProfileAvatar from "../hooks/useProfileAvatar";
 import { useLocalSearchParams } from "expo-router";
 import useBubbles from "../hooks/useBubbles";
 
@@ -82,12 +79,12 @@ export default function MessagesScreen() {
   const [loading, setLoading] = useState(true);
   const [loadingError, setLoadingError] = useState<string | null>(null);
 
-
-  const [recentlyLeftOpen, setRecentlyLeftOpen] = useState(false);
   const [starredOpen, setStarredOpen] = useState(false);
   const [extrasOpen, setExtrasOpen] = useState(false);
   const [openProfileSignal, setOpenProfileSignal] = useState(0);
   const [closeProfileSignal, setCloseProfileSignal] = useState(0);
+  const [openRecentlyLeftSignal, setOpenRecentlyLeftSignal] = useState(0);
+  const [refreshProfileInboxSignal, setRefreshProfileInboxSignal] = useState(0);
 
   const params = useLocalSearchParams<{ 
     openConversationId?: string;
@@ -160,22 +157,6 @@ export default function MessagesScreen() {
     setConversations(data);
     return data;
   }
-
-const {
-  refreshMe,
-} = useProfileAvatar({ t });
-
-  const {
-  recentlyLeft,
-  loadingRecentlyLeft,
-  refreshChatRequests,
-  refreshChatOutgoing,
-  refreshRecentlyLeft,
-  } = useProfileInbox({
-  t,
-  refreshConversations,
-  refreshMe,
-});
 
 
 const {
@@ -378,6 +359,15 @@ useEffect(() => {
     setCloseProfileSignal((prev) => prev +1);
   }
 
+  function requestOpenRecentlyLeftModal() {
+    setOpenRecentlyLeftSignal((prev) => prev + 1);
+  }
+
+  function requestRefreshProfileInbox() {
+  setRefreshProfileInboxSignal((prev) => prev + 1);
+}
+
+
   async function createConversationRequest(identifier: string) {
     const value = identifier.trim();
     if (!value) return;
@@ -391,7 +381,7 @@ useEffect(() => {
 
     if (res.status === "PENDING_ALREADY") {
       Alert.alert(t("common.pending"), t("common.currentRequestPending"));
-      await refreshChatOutgoing();
+      requestRefreshProfileInbox();
       return;
     }
 
@@ -402,7 +392,7 @@ useEffect(() => {
     }
 
     if (res.status === "REJOIN_SENT") {
-      await refreshChatOutgoing();
+      requestRefreshProfileInbox();
       
       Alert.alert(
         t("common.rejoinRequestSentTitle"),
@@ -414,7 +404,7 @@ useEffect(() => {
 
 
     if (res.status === "INCOMING_PENDING") {
-      await refreshChatRequests();
+      requestRefreshProfileInbox();
 
       Alert.alert(
         t("common.requestWaitingTitle"),
@@ -427,7 +417,7 @@ useEffect(() => {
       return;
     }
 
-    await refreshChatOutgoing();
+    requestRefreshProfileInbox();
 
     Alert.alert(
       t("common.sent"),
@@ -599,8 +589,7 @@ useEffect(() => {
       }
 
       if (rejoinRequestSent) {
-        await refreshChatOutgoing().catch(() => {});
-        await refreshChatRequests().catch(() => {});
+        requestRefreshProfileInbox();
 
       Alert.alert(
         t("common.rejoinRequestSentTitle"),
@@ -636,20 +625,14 @@ useEffect(() => {
 
 
 if (payload?.code === "REJOIN_PENDING") {
-  // ✅ close chat overlay so it doesn't look weird
   await stopCurrentAudio().catch(() => {});
   setActiveConversation(null);
   setChatMessages([]);
   setDraft("");
 
-
-  // optional: also disconnect ws immediately (nice cleanup)
   disconnectWs?.();
 
-
-  // ✅ open profile + refresh
-  await refreshChatOutgoing().catch(() => {});
-  await refreshChatRequests().catch(() => {});
+  requestRefreshProfileInbox();
 
   Alert.alert(
     t("common.rejoinPendingTitle"),
@@ -673,11 +656,8 @@ if (payload?.code === "REJOIN_PENDING") {
     }
   }
 
-
-  // Compute a simple "is the other user online?" from room presence
   const otherUserId = activeConversation?.otherUserId ?? null;
   const otherOnline = otherUserId ? !!presenceMap[otherUserId] : false;
-
 
   return (
     <View style={styles.container}>
@@ -703,13 +683,11 @@ if (payload?.code === "REJOIN_PENDING") {
     activeOpacity={0.85}
     style={styles.railBtn}
     onPress={() => {
-      setRecentlyLeftOpen(true);
-      refreshRecentlyLeft().catch(() => {});
+      requestOpenRecentlyLeftModal();
     }}
   >
     <Text style={styles.railBtnText}>⏱️</Text>
   </TouchableOpacity>
-
 
   <TouchableOpacity
     activeOpacity={0.85}
@@ -719,7 +697,6 @@ if (payload?.code === "REJOIN_PENDING") {
     <Text style={styles.railBtnText}>🫧</Text>
   </TouchableOpacity>
 
-
   <TouchableOpacity
     activeOpacity={0.85}
     style={styles.railBtn}
@@ -728,52 +705,6 @@ if (payload?.code === "REJOIN_PENDING") {
     <Text style={styles.railBtnText}>💥</Text>
   </TouchableOpacity>
 </View>
-
-
-<RecentlyLeftModal
-  visible={recentlyLeftOpen}
-  onClose={() => setRecentlyLeftOpen(false)}
-  t={t}
-  recentlyLeft={recentlyLeft}
-  loadingRecentlyLeft={loadingRecentlyLeft}
-  onRefreshRecentlyLeft={() => {
-    refreshRecentlyLeft().catch(() => {});
-  }}
-  onPressRecentlyLeftUser={(item) => {
-    const username = (item.otherUsername || "").trim();
-    if (!username) return;
-
-
-    setRecentlyLeftOpen(false);
-
-
-    setTimeout(() => {
-      Alert.alert(
-        t("common.rejoinPromptTitle"),
-        t("common.rejoinPromptBody", { username }),
-        [
-          { text: t("common.cancel"), style: "cancel" },
-          {
-            text: t("common.send"),
-            onPress: async () => {
-              try {
-                await createConversationRequest(username);
-
-              } catch (err: any) {
-                console.warn("Failed to send rejoin request:", err);
-                Alert.alert(
-                  t("common.couldNotSendTitle"),
-                  err?.message ?? t("common.serverError")
-                );
-              }
-            },
-          },
-        ]
-      );
-    }, 0);
-  }}
-/>
-
 
 <FakeBubbleModal
   visible={starredOpen}
@@ -790,13 +721,11 @@ if (payload?.code === "REJOIN_PENDING") {
   }}
 />
 
-
 <ExtrasModal
   visible={extrasOpen}
   onClose={() => setExtrasOpen(false)}
   t={t}
 />
-
 
 <FloatingConversationField
   bubbles={allBubbles}
@@ -819,7 +748,6 @@ if (payload?.code === "REJOIN_PENDING") {
   }}
 />
 
-
       {/* Yap button */}
       <View style={styles.yapButtonWrapper} pointerEvents={activeConversation ? "none" : "auto"}>
         <TouchableOpacity
@@ -834,7 +762,6 @@ if (payload?.code === "REJOIN_PENDING") {
         </TouchableOpacity>
       </View>
 
-
       {/* Nav bubbles */}
       <TouchableOpacity style={styles.homeBubbleWrapper} onPress={() => router.push("/")} activeOpacity={0.85}>
         <LinearGradient colors={["rgba(255,255,255,0.9)", "rgba(180,220,255,0.5)"] as const} style={styles.navBubble}>
@@ -842,13 +769,11 @@ if (payload?.code === "REJOIN_PENDING") {
         </LinearGradient>
       </TouchableOpacity>
 
-
       <TouchableOpacity style={styles.settingsBubbleWrapper} onPress={() => router.push("/settings")} activeOpacity={0.85}>
         <LinearGradient colors={["rgba(255,255,255,0.9)", "rgba(180,220,255,0.5)"] as const} style={styles.navBubble}>
           <Text style={{ fontSize: 24 }}>⚙️</Text>
         </LinearGradient>
       </TouchableOpacity>
-
 
       <ProfileEntryPoint
         t={t}
@@ -857,6 +782,8 @@ if (payload?.code === "REJOIN_PENDING") {
         disabled={!!activeConversation}
         openProfileSignal={openProfileSignal}
         closeProfileSignal={closeProfileSignal}
+        openRecentlyLeftSignal={openRecentlyLeftSignal}
+        refreshProfileInboxSignal={refreshProfileInboxSignal}
         onAcceptedConversation={(conversationId) => openConversationById(conversationId)}
         onOpenContacts={() => {
           router.push("/contacts");

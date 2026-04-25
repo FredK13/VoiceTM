@@ -1,4 +1,4 @@
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Alert } from "react-native";
 import type { TFunction } from "i18next";
 import ProfileLauncher from "./ProfileLauncher";
@@ -6,13 +6,15 @@ import ProfileModal from "./ProfileModal";
 import useProfileAvatar from "../hooks/useProfileAvatar";
 import useProfileInbox from "../hooks/useProfileInbox";
 import useRefreshOnFocus from "../hooks/useRefreshOnFocus";
-import { apiFetch } from "../../lib/api";
+import { apiFetch, apiJson } from "../../lib/api";
 import type {
   IncomingContactInvite,
   IncomingInvite,
   IncomingRejoinInvite,
+  RequestResponse,
 } from "../../lib/types";
 import type { OutgoingNotif } from "../hooks/useProfileInbox";
+import RecentlyLeftModal from "./RecentlyLeftModal";
 
 
 type Props = {
@@ -24,6 +26,8 @@ type Props = {
   onOpenContacts?: () => void;
   openProfileSignal?: number;
   closeProfileSignal?: number;
+  openRecentlyLeftSignal?: number;
+  refreshProfileInboxSignal?: number;
 };
 
 
@@ -36,6 +40,8 @@ export default function ProfileEntryPoint({
   onOpenContacts,
   openProfileSignal = 0,
   closeProfileSignal = 0,
+  openRecentlyLeftSignal = 0,
+  refreshProfileInboxSignal = 0,
 }: Props) {
   const {
     myAvatarUrl,
@@ -44,11 +50,14 @@ export default function ProfileEntryPoint({
     pickAndUploadAvatar,
     removeAvatar,
   } = useProfileAvatar({ t });
+  
 
 
   const {
     profileOpen,
     setProfileOpen,
+    recentlyLeft,
+    loadingRecentlyLeft,
     setChatRequests,
     setContactRequests,
     unifiedIncoming,
@@ -59,6 +68,7 @@ export default function ProfileEntryPoint({
     refreshChatOutgoing,
     refreshContactRequests,
     refreshContactOutgoing,
+    refreshRecentlyLeft,
     openProfileAndRefresh,
     refreshAllProfileInbox,
     badgeCount,
@@ -71,8 +81,11 @@ export default function ProfileEntryPoint({
 
   useRefreshOnFocus(refreshAllProfileInbox);
 
-   const lastOpenProfileSignalRef = useRef<number>(0);
-   const lastCloseProfileSignalRef = useRef<number>(0);
+    const [recentlyLeftOpen, setRecentlyLeftOpen] = useState(false);
+    const lastOpenProfileSignalRef = useRef<number>(0);
+    const lastCloseProfileSignalRef = useRef<number>(0);
+    const handledOpenRecentlyLeftRef = useRef<number>(0);
+    const handledRefreshProfileInboxRef = useRef<number>(0);
 
     useEffect(() => {
       if (!openProfileSignal) return;
@@ -86,11 +99,26 @@ export default function ProfileEntryPoint({
       if (!closeProfileSignal) return;
       if (lastCloseProfileSignalRef.current === closeProfileSignal) return;
 
-
       lastCloseProfileSignalRef.current = closeProfileSignal;
         setProfileOpen(false);
     }, [closeProfileSignal, setProfileOpen]);
 
+    useEffect(() => {
+      if (!openRecentlyLeftSignal) return;
+      if (handledOpenRecentlyLeftRef.current === openRecentlyLeftSignal) return;
+      
+      handledOpenRecentlyLeftRef.current = openRecentlyLeftSignal;
+        setRecentlyLeftOpen(true);
+        refreshRecentlyLeft().catch(() => {});
+    }, [openRecentlyLeftSignal, refreshRecentlyLeft]);
+
+    useEffect(() => {
+      if (!refreshProfileInboxSignal) return;
+      if (handledRefreshProfileInboxRef.current === refreshProfileInboxSignal) return;
+
+      handledRefreshProfileInboxRef.current = refreshProfileInboxSignal;
+        refreshAllProfileInbox().catch(() => {});
+    }, [refreshProfileInboxSignal, refreshAllProfileInbox]);
 
 
   async function acceptChatRequest(item: IncomingInvite | IncomingRejoinInvite | any) {
@@ -167,6 +195,77 @@ export default function ProfileEntryPoint({
     }
   }
 
+  async function createConversationRequest(identifier: string) {
+  const value = identifier.trim();
+  if (!value) return;
+
+
+  const res = await apiJson<RequestResponse>("/api/conversations/request", {
+    method: "POST",
+    json: { identifier: value },
+  });
+
+
+  if (res.status === "PENDING_ALREADY") {
+    Alert.alert(t("common.pending"), t("common.currentRequestPending"));
+    await refreshChatOutgoing();
+    return;
+  }
+
+
+  if (res.status === "ALREADY_CONNECTED") {
+    if (res.conversationId) {
+      setProfileOpen(false);
+
+
+      if (onAcceptedConversation) {
+        await onAcceptedConversation(res.conversationId);
+      } else {
+        router.push("/messages");
+      }
+    }
+    return;
+  }
+
+
+  if (res.status === "REJOIN_SENT") {
+    await refreshChatOutgoing();
+
+
+    Alert.alert(
+      t("common.rejoinRequestSentTitle"),
+      t("common.rejoinRequestSentBody"),
+      [{ text: t("common.open"), onPress: () => openProfileAndRefresh().catch(() => {}) }]
+    );
+    return;
+  }
+
+
+  if (res.status === "INCOMING_PENDING") {
+    await refreshChatRequests();
+
+
+    Alert.alert(
+      t("common.requestWaitingTitle"),
+      t("common.requestWaitingBody"),
+      [
+        { text: t("common.open"), onPress: () => openProfileAndRefresh().catch(() => {}) },
+        { text: t("common.cancel"), style: "cancel" },
+      ]
+    );
+    return;
+  }
+
+
+  await refreshChatOutgoing();
+
+
+  Alert.alert(
+    t("common.sent"),
+    t("common.requestSent"),
+    [{ text: t("common.okay"), onPress: () => openProfileAndRefresh().catch(() => {}) }]
+  );
+}
 
   async function cancelPendingRequest(item: OutgoingNotif) {
     try {
@@ -242,6 +341,48 @@ export default function ProfileEntryPoint({
           else router.push("/contacts");
         }}
       />
+      
+      
+      <RecentlyLeftModal
+        visible={recentlyLeftOpen}
+        onClose={() => setRecentlyLeftOpen(false)}
+        t={t}
+        recentlyLeft={recentlyLeft}
+        loadingRecentlyLeft={loadingRecentlyLeft}
+        onRefreshRecentlyLeft={() => {
+          refreshRecentlyLeft().catch(() => {});
+        }}
+        onPressRecentlyLeftUser={(item) => {
+          const username = (item.otherUsername || "").trim();
+          if (!username) return;
+
+          setRecentlyLeftOpen(false);
+
+          setTimeout(() => {
+          Alert.alert(
+            t("common.rejoinPromptTitle"),
+            t("common.rejoinPromptBody", { username }),
+          [
+            { text: t("common.cancel"), style: "cancel" },
+            {
+              text: t("common.send"),
+                onPress: async () => {
+                try {
+                  await createConversationRequest(username);
+                } catch (err: any) {
+                    console.warn("Failed to send rejoin request:", err);
+                  Alert.alert(
+                    t("common.couldNotSendTitle"),
+                    err?.message ?? t("common.serverError")
+                  );
+                }
+              },
+            },
+          ]
+        );
+      }, 0);
+    }}
+  />
     </>
   );
 }
