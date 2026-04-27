@@ -1,6 +1,5 @@
 // (tabs)/contacts.tsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
-
 import {
   View,
   Text,
@@ -15,20 +14,17 @@ import {
   Dimensions,
   RefreshControl,
 } from "react-native";
-
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { apiFetch, apiJson } from "../../lib/api";
 import { useTranslation } from "react-i18next";
-
 import type {
   ContactsResponse, ContactRow, ContactRequestResponse, PresenceBatchResponse,
 } from "../../lib/types";
-
 import { usePresence } from "../../lib/presence";
 import ContactsBlockedList from "../components/contactsComponents/ContactsBlockedList";
 import ContactsSettings from "../components/contactsComponents/ContactsSettings";
-
+import useConversationRequestFlow from "../hooks/useConversationRequestFlow";
 
 const { width } = Dimensions.get("window");
 const BUBBLE = Math.min(92, Math.max(66, width * 0.185));
@@ -120,6 +116,29 @@ function closeContactProfile() {
 }
 
 
+const submitConversationRequest = useConversationRequestFlow({
+  t,
+  openConversation: async (conversationId: string) => {
+    closeContactProfile();
+
+
+    router.push({
+      pathname: "/messages",
+      params: { openConversationId: conversationId },
+    });
+  },
+  openProfile: () => {
+    closeContactProfile();
+
+
+    router.push({
+      pathname: "/messages",
+      params: { openProfile: String(Date.now()) },
+    });
+  },
+});
+
+
   useEffect(() => {
     refreshContacts().catch(() => {});
 
@@ -193,97 +212,20 @@ function closeContactProfile() {
   }
 
   async function sendYapToSelectedContact() {
-  const user = selectedContact;
-  if (!user || sendingYap) return;
+    const user = selectedContact;
+    if (!user || sendingYap) return;
 
-  const openMessagesProfile = () => {
-    router.push ({
-      pathname: "/messages",
-      params: { openProfile: String(Date.now())},
-    });
-  };
-
-  setSendingYap(true);
-  try {
-    const res = await apiJson<any>("/api/conversations/request", {
-      method: "POST",
-      json: { identifier: user.username },
-    });
-
-
-    if (res.status === "ALREADY_CONNECTED" && res.conversationId) {
-  const conversationId = String(res.conversationId);
-
-  closeContactProfile();
-
-  router.push({
-    pathname: "/messages",
-    params: { openConversationId: conversationId },
-  });
-
-  return;
-}
-
-
-    if (res.status === "PENDING_ALREADY") {
-      Alert.alert(t("common.pending"), t("common.currentRequestPending"));
-      return;
+    setSendingYap(true);
+      try {
+        await submitConversationRequest(user.username);
+      } catch (e: any) {
+        Alert.alert(
+          t("common.errorTitle"), e?.message ?? 
+        t("common.serverError"));
+      } finally {
+        setSendingYap(false);
+      }
     }
-
-
-    if (res.status === "INCOMING_PENDING") {
-      closeContactProfile();
-
-      Alert.alert(
-        t("common.requestWaitingTitle"), 
-        t("common.requestWaitingBody"),
-        [
-          {
-            text: t("common.open"),
-            onPress: openMessagesProfile,
-          },
-          { text: t("common.cancel"), style: "cancel" },
-        ]
-      );
-      return;
-    }
-
-
-    if (res.status === "REJOIN_SENT") {
-      closeContactProfile();
-
-      Alert.alert(
-        t("common.rejoinRequestSentTitle"), 
-        t("common.rejoinRequestSentBody"),
-        [
-          {
-            text: t("common.open"),
-            onPress: openMessagesProfile,
-          },
-          { text: t("common.cancel"), style: "cancel" },
-        ]
-      );
-      return;
-    }
-
-      closeContactProfile();
-
-      Alert.alert(
-        t("common.sent"), 
-        t("common.requestSent"),
-        [
-          {
-            text: t("common.okay"),
-            onPress: openMessagesProfile,
-          },
-        ]
-      );
-    } catch (e: any) {
-      Alert.alert(t("common.errorTitle"), e?.message ?? t("common.serverError"));
-    } finally {
-      setSendingYap(false);
-    }
-  }
 
 
   function onLongPressContact(u: ContactRow["user"]) {

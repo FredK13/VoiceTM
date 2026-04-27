@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, useCallback } from "react";
 import { Alert } from "react-native";
 import type { TFunction } from "i18next";
 import ProfileLauncher from "./ProfileLauncher";
@@ -6,12 +6,12 @@ import ProfileModal from "./ProfileModal";
 import useProfileAvatar from "../hooks/useProfileAvatar";
 import useProfileInbox from "../hooks/useProfileInbox";
 import useRefreshOnFocus from "../hooks/useRefreshOnFocus";
-import { apiFetch, apiJson } from "../../lib/api";
+import useConversationRequestFlow from "../hooks/useConversationRequestFlow";
+import { apiFetch } from "../../lib/api";
 import type {
   IncomingContactInvite,
   IncomingInvite,
   IncomingRejoinInvite,
-  RequestResponse,
 } from "../../lib/types";
 import type { OutgoingNotif } from "../hooks/useProfileInbox";
 import RecentlyLeftModal from "./RecentlyLeftModal";
@@ -87,6 +87,24 @@ export default function ProfileEntryPoint({
     const handledOpenRecentlyLeftRef = useRef<number>(0);
     const handledRefreshProfileInboxRef = useRef<number>(0);
 
+    const safeOpenProfileAndRefresh = useCallback(() => {
+      openProfileAndRefresh().catch(() => {});
+    }, [openProfileAndRefresh]);
+
+    const submitConversationRequest = useConversationRequestFlow({
+      t,
+      openConversation: async (conversationId: string) => {
+        setProfileOpen(false);
+
+        if (onAcceptedConversation) {
+          await onAcceptedConversation (conversationId);
+        } else {
+          router.push("/messages");
+        }
+      },
+      openProfile: safeOpenProfileAndRefresh,
+    });
+    
     useEffect(() => {
       if (!openProfileSignal) return;
       if (lastOpenProfileSignalRef.current === openProfileSignal) return;
@@ -195,78 +213,6 @@ export default function ProfileEntryPoint({
     }
   }
 
-  async function createConversationRequest(identifier: string) {
-  const value = identifier.trim();
-  if (!value) return;
-
-
-  const res = await apiJson<RequestResponse>("/api/conversations/request", {
-    method: "POST",
-    json: { identifier: value },
-  });
-
-
-  if (res.status === "PENDING_ALREADY") {
-    Alert.alert(t("common.pending"), t("common.currentRequestPending"));
-    await refreshChatOutgoing();
-    return;
-  }
-
-
-  if (res.status === "ALREADY_CONNECTED") {
-    if (res.conversationId) {
-      setProfileOpen(false);
-
-
-      if (onAcceptedConversation) {
-        await onAcceptedConversation(res.conversationId);
-      } else {
-        router.push("/messages");
-      }
-    }
-    return;
-  }
-
-
-  if (res.status === "REJOIN_SENT") {
-    await refreshChatOutgoing();
-
-
-    Alert.alert(
-      t("common.rejoinRequestSentTitle"),
-      t("common.rejoinRequestSentBody"),
-      [{ text: t("common.open"), onPress: () => openProfileAndRefresh().catch(() => {}) }]
-    );
-    return;
-  }
-
-
-  if (res.status === "INCOMING_PENDING") {
-    await refreshChatRequests();
-
-
-    Alert.alert(
-      t("common.requestWaitingTitle"),
-      t("common.requestWaitingBody"),
-      [
-        { text: t("common.open"), onPress: () => openProfileAndRefresh().catch(() => {}) },
-        { text: t("common.cancel"), style: "cancel" },
-      ]
-    );
-    return;
-  }
-
-
-  await refreshChatOutgoing();
-
-
-  Alert.alert(
-    t("common.sent"),
-    t("common.requestSent"),
-    [{ text: t("common.okay"), onPress: () => openProfileAndRefresh().catch(() => {}) }]
-  );
-}
-
   async function cancelPendingRequest(item: OutgoingNotif) {
     try {
       if (item.kind === "chat") {
@@ -368,7 +314,7 @@ export default function ProfileEntryPoint({
               text: t("common.send"),
                 onPress: async () => {
                 try {
-                  await createConversationRequest(username);
+                  await submitConversationRequest(username);
                 } catch (err: any) {
                     console.warn("Failed to send rejoin request:", err);
                   Alert.alert(

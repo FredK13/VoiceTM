@@ -1,7 +1,7 @@
 ﻿// app/(tabs)/messages.tsx
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
-import React, { useEffect, useRef, useState, useMemo } from "react";
+import React, { useCallback, useEffect, useRef, useState, useMemo } from "react";
 import {
   Alert,
   Keyboard,
@@ -15,10 +15,7 @@ import {
 import { apiFetch, apiJson, isApiError} from "../../lib/api";
 import { getUserId } from "../../lib/session";
 import { useTranslation } from "react-i18next";
-import type {
-  Conversation,
-  RequestResponse,
-} from "../../lib/types";
+import type { Conversation } from "../../lib/types";
 import {
   sendJson,
   isWsOpen,
@@ -30,6 +27,7 @@ import FloatingConversationField from "../components/FloatingConversationField";
 import type { MovingBubble } from "../components/FloatingConversationField";
 import type { BubbleObstacle } from "../../lib/bubblePhysics";
 import ChatOverlay, { type ChatOverlayMessage } from "../components/ChatOverlay";
+import useConversationRequestFlow from "../hooks/useConversationRequestFlow";
 import useChatAudio from "../hooks/useChatAudio";
 import useConversationRealtime from "../hooks/useConversationRealtime";
 import { mapApiMessageToChatMessage, sortChatMessagesByCreatedAt } from "../../lib/chatMessageMapper";
@@ -367,66 +365,17 @@ useEffect(() => {
   setRefreshProfileInboxSignal((prev) => prev + 1);
 }
 
-
-  async function createConversationRequest(identifier: string) {
-    const value = identifier.trim();
-    if (!value) return;
-
-
-    const res = await apiJson<RequestResponse>("/api/conversations/request", {
-      method: "POST",
-      json: { identifier: value },
-    });
+const refreshProfileInbox = useCallback(() => {
+  requestRefreshProfileInbox();
+},[]);
 
 
-    if (res.status === "PENDING_ALREADY") {
-      Alert.alert(t("common.pending"), t("common.currentRequestPending"));
-      requestRefreshProfileInbox();
-      return;
-    }
-
-
-    if (res.status === "ALREADY_CONNECTED") {
-      await openConversationById(res.conversationId);
-      return;
-    }
-
-    if (res.status === "REJOIN_SENT") {
-      requestRefreshProfileInbox();
-      
-      Alert.alert(
-        t("common.rejoinRequestSentTitle"),
-        t("common.rejoinRequestSentBody"),
-        [{ text: t("common.open"), onPress: () => requestOpenProfileModal() }]
-      );
-      return;
-    }
-
-
-    if (res.status === "INCOMING_PENDING") {
-      requestRefreshProfileInbox();
-
-      Alert.alert(
-        t("common.requestWaitingTitle"),
-        t("common.requestWaitingBody"),
-        [
-          { text: t("common.open"), onPress: () => requestOpenProfileModal() },
-          { text: t("common.cancel"), style: "cancel" },
-        ]
-      );
-      return;
-    }
-
-    requestRefreshProfileInbox();
-
-    Alert.alert(
-      t("common.sent"),
-      t("common.requestSent"),
-      [{text: t("common.okay"), onPress: () => requestOpenProfileModal() }]
-    );
-    
-  }
-
+const submitConversationRequest = useConversationRequestFlow({
+  t,
+  openConversation: openConversationById,
+  openProfile: requestOpenProfileModal,
+  refreshAll: refreshProfileInbox,
+});
 
   function handleYapPress() {
     if (Platform.OS === "ios") {
@@ -440,7 +389,7 @@ useEffect(() => {
             onPress: (value?: string) => {
               const identifier = (value ?? "").trim();
               if (!identifier) return;
-              createConversationRequest(identifier).catch((err) => {
+              submitConversationRequest(identifier).catch((err) => {
                 console.warn("Failed to send request:", err);
                 Alert.alert(t("common.couldNotSendTitle"), err?.message ?? t("common.serverError"));
               });
