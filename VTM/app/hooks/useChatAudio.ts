@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Audio } from "expo-av";
 import { apiFetch } from "../../lib/api";
 import { getToken } from "../../lib/session";
@@ -58,7 +58,7 @@ export function useChatAudio({
   }, []);
 
 
-  async function stopCurrentAudio() {
+  const stopCurrentAudio = useCallback(async () => {
     const current = soundRef.current;
     soundRef.current = null;
     setPlayingMessageId(null);
@@ -73,37 +73,30 @@ export function useChatAudio({
     try {
       await current.unloadAsync();
     } catch {}
-  }
+  }, []);
 
 
-  async function playMessageAudio(
+  const playMessageAudio = useCallback(async (
     message: ChatOverlayMessage,
     conversationId?: string,
     auto = false
-  ) {
+  ) => {
     if (!message.audioUrl) return;
-
 
     if (playingMessageId === message.id) {
       await stopCurrentAudio();
       return;
     }
 
-
     if (playLockRef.current) return;
     playLockRef.current = true;
 
-
     const requestId = ++playRequestIdRef.current;
-
 
     try {
       await stopCurrentAudio();
 
-
       const token = await getToken();
-
-
       const { sound } = await Audio.Sound.createAsync(
         {
           uri: message.audioUrl,
@@ -111,7 +104,6 @@ export function useChatAudio({
         },
         { shouldPlay: true }
       );
-
 
       if (requestId !== playRequestIdRef.current) {
         try {
@@ -123,34 +115,27 @@ export function useChatAudio({
         return;
       }
 
-
       soundRef.current = sound;
       setPlayingMessageId(message.id);
-
 
       sound.setOnPlaybackStatusUpdate((status) => {
         if (!status.isLoaded) return;
 
-
         if (status.didJustFinish) {
           if (requestId !== playRequestIdRef.current) return;
-
 
           setPlayingMessageId(null);
           soundRef.current = null;
 
-
           if (activeConversationId && myUserId && !message.isMine) {
             const convoId = activeConversationId;
             const nowIso = new Date().toISOString();
-
 
             if (!message.listenedAt) {
               apiFetch(`/api/conversations/${convoId}/messages/${message.id}/listened`, {
                 method: "POST",
               }).catch(() => {});
             }
-
 
             setChatMessages((prev) =>
               prev.map((m) =>
@@ -163,7 +148,6 @@ export function useChatAudio({
                   : m
               )
             );
-
 
             const ws = getWs();
             if (ws && isWsOpen(ws)) {
@@ -178,7 +162,6 @@ export function useChatAudio({
         }
       });
 
-
       if (auto && !message.listenedAt && conversationId && !message.isMine) {
         try {
           const nowIso = new Date().toISOString();
@@ -186,7 +169,6 @@ export function useChatAudio({
           await apiFetch(`/api/conversations/${conversationId}/messages/${message.id}/listened`, {
             method: "POST",
           });
-
 
           setChatMessages((prev) =>
             prev.map((m) =>
@@ -219,8 +201,14 @@ export function useChatAudio({
     } finally {
       playLockRef.current = false;
     }
-  }
-
+  }, [
+    activeConversationId,
+    getWs,
+    myUserId,
+    playingMessageId,
+    setChatMessages,
+    stopCurrentAudio,
+  ]);
 
   return {
     playingMessageId,
@@ -228,6 +216,5 @@ export function useChatAudio({
     playMessageAudio,
   };
 }
-
 
 export default useChatAudio;

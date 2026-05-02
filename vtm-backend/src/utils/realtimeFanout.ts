@@ -1,4 +1,5 @@
 import prisma from "../prismaClient";
+import type { RealtimeEvent } from "./realtimeEvents";
 
 
 export async function listPresenceWatcherUserIds(subjectUserId: string): Promise<string[]> {
@@ -47,29 +48,35 @@ export async function listPresenceWatcherUserIds(subjectUserId: string): Promise
   );
 }
 
-
-export async function publishPresenceToUsers(params: {
-  watcherUserIds: string[];
-  subjectUserId: string;
-  online: boolean;
-  at?: string;
-}) {
+function realtimeConfig() {
   const base = (process.env.REALTIME_INTERNAL_URL || "").trim().replace(/\/+$/, "");
   const secret = (process.env.WS_INTERNAL_BROADCAST_SECRET || "").trim();
 
 
   if (!base || !secret) {
+    return null;
+  }
+
+
+  return { base, secret };
+}
+
+
+export async function publishRealtimeToRooms(params: {
+  roomIds: string[];
+  event: RealtimeEvent;
+}) {
+  const config = realtimeConfig();
+
+
+  if (!config) {
     console.warn("Realtime fanout not configured");
     return;
   }
 
 
   const roomIds = Array.from(
-    new Set(
-      params.watcherUserIds
-        .filter(Boolean)
-        .map((id) => `user:${id}`)
-    )
+    new Set(params.roomIds.map((x) => x.trim()).filter(Boolean))
   );
 
 
@@ -77,34 +84,67 @@ export async function publishPresenceToUsers(params: {
 
 
   try {
-    const res = await fetch(`${base}/internal/broadcast`, {
+    const res = await fetch(`${config.base}/internal/broadcast`, {
       method: "POST",
       headers: {
         "content-type": "application/json",
-        "x-internal-broadcast": secret,
+        "x-internal-broadcast": config.secret,
       },
       body: JSON.stringify({
         roomIds,
-        event: {
-          type: "presence",
-          userId: params.subjectUserId,
-          online: params.online,
-          at: params.at ?? new Date().toISOString(),
-        },
+        event: params.event,
       }),
     });
 
 
     if (!res.ok) {
       const body = await res.text().catch(() => "");
-      console.warn("publishPresenceToUsers non-ok response:", {
+      console.warn("publishRealtimeToRooms non-ok response:", {
         status: res.status,
         body,
       });
     }
   } catch (err) {
-    console.warn("publishPresenceToUsers failed:", err);
+    console.warn("publishRealtimeToRooms failed:", err);
   }
 }
+
+
+export async function publishRealtimeToUsers(params: {
+  userIds: string[];
+  event: RealtimeEvent;
+}) {
+  const roomIds = Array.from(
+    new Set(
+      params.userIds
+        .filter(Boolean)
+        .map((id) => `user:${id}`)
+    )
+  );
+
+
+  return publishRealtimeToRooms({
+    roomIds,
+    event: params.event,
+  });
+}
+
+export async function publishPresenceToUsers(params: {
+  watcherUserIds: string[];
+  subjectUserId: string;
+  online: boolean;
+  at?: string;
+}) {
+  return publishRealtimeToUsers({
+    userIds: params.watcherUserIds,
+    event: {
+      type: "presence",
+      userId: params.subjectUserId,
+      online: params.online,
+      at: params.at ?? new Date().toISOString(),
+    },
+  });
+}
+
 
 

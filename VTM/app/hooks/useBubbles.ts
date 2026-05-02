@@ -81,7 +81,7 @@ function createChatBubble(
     bounds,
     existingBubbles: existing,
     obstacles,
-    maxTries: 30,
+    maxTries: 20,
   });
 
   return {
@@ -109,7 +109,7 @@ function createFakeBubble(
     bounds,
     existingBubbles: existing,
     obstacles,
-    maxTries: 40,
+    maxTries: 20,
   });
 
 

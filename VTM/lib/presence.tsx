@@ -8,8 +8,13 @@ import React, {
   useState,
 } from "react";
 import { AppState } from "react-native";
-import { apiJson } from "./api";
 import { getUserId } from "./session";
+import {
+   closeWs,
+   connectRealtime, 
+   roomForUser, 
+  } from "./realtime";
+  import type { UserRealtimeEvent } from "./realtimeEvents";
 
 
 type PresenceEvent = {
@@ -21,48 +26,42 @@ type PresenceEvent = {
 
 
 type PresenceMap = Record<string, string | null>;
-
-
-type WsTokenResponse = {
-  token: string;
-  expiresInSec: number;
-};
-
+type RealtimeListener = (evt: UserRealtimeEvent ) => void;
 
 type PresenceContextValue = {
   onlineByUserId: PresenceMap;
   setFromSnapshot: (next: PresenceMap) => void;
   applyPresenceEvent: (evt: PresenceEvent) => void;
   isUserOnline: (userId: string, nowMs?: number) => boolean;
+  subscribe: (listener: RealtimeListener) => () => void;
 };
-
 
 const PresenceContext = createContext<PresenceContextValue | null>(null);
 
-
 const ONLINE_WINDOW_MS = 75_000;
-
-
-function getWsBase() {
-  const fromEnv = (process.env.EXPO_PUBLIC_WS_BASE || "").trim();
-  if (fromEnv) return fromEnv.replace(/\/+$/, "");
-
-  if (__DEV__) {
-    throw new Error("Missing EXPO_PUBLIC_WS_BASE");
-  }
-  return "wss://ws.yapme.app";
-}
-
+const RECONNECT_DELAY_MS = 2500;
 
 export function PresenceProvider({ children }: { children: React.ReactNode }) {
   const [onlineByUserId, setOnlineByUserId] = useState<PresenceMap>({});
   const wsRef = useRef<WebSocket | null>(null);
+  const roomIdRef = useRef<string | null>(null);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const closedRef = useRef(false);
-
+  const connectingRef = useRef(false);
+  const connectRef = useRef<(() => void) | null>(null);
 
   const setFromSnapshot = useCallback((next: PresenceMap) => {
     setOnlineByUserId((prev) => ({ ...prev, ...next }));
+  }, []);
+
+  const listenersRef = useRef(new Set<RealtimeListener>());
+
+  const subscribe = useCallback((listener: RealtimeListener) => {
+    listenersRef.current.add(listener);
+
+    return () => {
+      listenersRef.current.delete(listener);
+    };
   }, []);
 
 
@@ -76,8 +75,6 @@ export function PresenceProvider({ children }: { children: React.ReactNode }) {
   }));
 }, []);
 
-
-
   const isUserOnline = useCallback(
     (userId: string, nowMs = Date.now()) => {
       const lastSeenAt = onlineByUserId[userId];
@@ -90,91 +87,133 @@ export function PresenceProvider({ children }: { children: React.ReactNode }) {
   );
 
 
-  const cleanup = useCallback(() => {
-    const ws = wsRef.current;
-    wsRef.current = null;
-    if (ws) {
-      try {
-        ws.close();
-      } catch {}
+   const clearReconnectTimer = useCallback(() => {
+    if (reconnectTimerRef.current) {
+      clearTimeout(reconnectTimerRef.current);
+      reconnectTimerRef.current = null;
     }
   }, []);
 
 
-  const connect = useCallback(async () => {
-    try {
-      const myUserId = await getUserId();
-      if (!myUserId) return;
+  const cleanup = useCallback(() => {
+    const ws = wsRef.current;
 
+    wsRef.current = null;
+    roomIdRef.current = null;
 
-      const roomId = `user:${myUserId}`;
-      const tok = await apiJson<WsTokenResponse>(
-        `/api/realtime/ws-token?roomId=${encodeURIComponent(roomId)}`
-      );
+    if (ws) {
+      closeWs(ws);
+    }
+  }, []);
 
+  const scheduleReconnect = useCallback(() => {
+    if (closedRef.current) return;
+    if (reconnectTimerRef.current) return;
 
-      const ws = new WebSocket(`${getWsBase()}/ws/${encodeURIComponent(roomId)}`);
-      wsRef.current = ws;
+    reconnectTimerRef.current = setTimeout(() => {
+      reconnectTimerRef.current = null;
+      connectRef.current?.();
+    }, RECONNECT_DELAY_MS);
+  }, []);
 
+      const handleRealtimeMessage = useCallback(
+  (msg: UserRealtimeEvent) => {
+    if (!msg || typeof msg !== "object") return;
 
-      ws.onopen = () => {
+    if (msg.type === "presence" && typeof msg.userId === "string") {
+      applyPresenceEvent({
+        type: "presence",
+        userId: msg.userId,
+        online: !!msg.online,
+        at: typeof msg.at === "string" ? msg.at : new Date().toISOString(),
+      });
+
+      return;
+    }
+
+    if (typeof msg.type === "string" && msg.type.startsWith("notif:")) {
+      for (const listener of listenersRef.current) {
         try {
-          ws.send(JSON.stringify({ type: "auth", token: tok.token }));
-        } catch {}
-      };
-
-
-      ws.onmessage = (ev) => {
-        try {
-          const msg = JSON.parse(String(ev.data ?? ""));
-         if (msg?.type === "presence" && typeof msg.userId === "string") {
-
-          applyPresenceEvent({
-             type: "presence",
-             userId: msg.userId,
-             online: !!msg.online,
-             at: typeof msg.at === "string" ? msg.at : new Date().toISOString(),
-            });
-          }
-        } catch {}
-      };
-
-
-      ws.onerror = () => {
-        cleanup();
-        if (!closedRef.current && !reconnectTimerRef.current) {
-          reconnectTimerRef.current = setTimeout(() => {
-            reconnectTimerRef.current = null;
-            void connect();
-          }, 2500);
+          listener(msg);
+        } catch (err) {
+          console.warn("User realtime listener failed:", err);
         }
-      };
-
-
-      ws.onclose = () => {
-        cleanup();
-        if (!closedRef.current && !reconnectTimerRef.current) {
-          reconnectTimerRef.current = setTimeout(() => {
-            reconnectTimerRef.current = null;
-            void connect();
-          }, 2500);
-        }
-      };
-    } catch {
-      if (!closedRef.current && !reconnectTimerRef.current) {
-        reconnectTimerRef.current = setTimeout(() => {
-          reconnectTimerRef.current = null;
-          void connect();
-        }, 2500);
       }
     }
-  }, [applyPresenceEvent, cleanup]);
+  },
+  [applyPresenceEvent]
+);
 
+  const connect = useCallback(async () => {
+    if (closedRef.current) return;
+    if (connectingRef.current) return;
+
+    connectingRef.current = true;
+
+    try {
+      const myUserId = await getUserId();
+      if (!myUserId || closedRef.current) return;
+
+      const roomId = roomForUser(myUserId);
+
+      if (wsRef.current && roomIdRef.current === roomId) {
+        return;
+      }
+
+      cleanup();
+      clearReconnectTimer();
+
+      roomIdRef.current = roomId;
+
+      const ws = await connectRealtime({
+        roomId,
+        allowOneReconnect: false,
+
+        onMessage: (data) => {
+          handleRealtimeMessage(data);
+        },
+
+        onClose: () => {
+          wsRef.current = null;
+          roomIdRef.current = null;
+          scheduleReconnect();
+        },
+
+        onError: () => {
+          wsRef.current = null;
+          roomIdRef.current = null;
+          scheduleReconnect();
+        },
+      });
+
+      if (closedRef.current) {
+        closeWs(ws);
+        return;
+      }
+
+      wsRef.current = ws;
+    } catch (err) {
+      console.warn("Presence realtime connect failed:", err);
+      scheduleReconnect();
+    } finally {
+      connectingRef.current = false;
+    }
+  }, [
+    cleanup,
+    clearReconnectTimer,
+    handleRealtimeMessage,
+    scheduleReconnect,
+  ]);
+
+  useEffect(() => {
+    connectRef.current = () => {
+      void connect();
+    };
+  }, [connect]);
 
   useEffect(() => {
     closedRef.current = false;
-    void connect();
-
+      void connect();
 
     const sub = AppState.addEventListener("change", (state) => {
       if (state === "active" && !wsRef.current) {
@@ -182,18 +221,13 @@ export function PresenceProvider({ children }: { children: React.ReactNode }) {
       }
     });
 
-
     return () => {
       closedRef.current = true;
-      if (reconnectTimerRef.current) {
-        clearTimeout(reconnectTimerRef.current);
-        reconnectTimerRef.current = null;
-      }
+      clearReconnectTimer();
       sub.remove();
       cleanup();
     };
-  }, [cleanup, connect]);
-
+  }, [cleanup, clearReconnectTimer, connect]);
 
   const value = useMemo(
     () => ({
@@ -201,19 +235,25 @@ export function PresenceProvider({ children }: { children: React.ReactNode }) {
       setFromSnapshot,
       applyPresenceEvent,
       isUserOnline,
+      subscribe,
     }),
-    [onlineByUserId, setFromSnapshot, applyPresenceEvent, isUserOnline]
+    [onlineByUserId, setFromSnapshot, applyPresenceEvent, isUserOnline, subscribe]
   );
 
-
-  return <PresenceContext.Provider value={value}>{children}</PresenceContext.Provider>;
+  return (
+    <PresenceContext.Provider value={value}>
+      {children}
+    </PresenceContext.Provider>
+  );
 }
-
 
 export function usePresence() {
   const ctx = useContext(PresenceContext);
   if (!ctx) throw new Error("usePresence must be used inside PresenceProvider");
   return ctx;
 }
+
+export default usePresence;
+  
 
 

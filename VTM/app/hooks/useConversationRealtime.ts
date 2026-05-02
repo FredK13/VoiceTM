@@ -154,7 +154,7 @@ export function useConversationRealtime({
       if (payload.type === "msg:new") {
         const p = payload as WsMsgNew;
         if (p.convoId !== convoId) return;
-
+        if (p.senderId && p.senderId === myUserId) return;
 
         const messageId = String(p.messageId ?? "").trim();
         if (!messageId) return;

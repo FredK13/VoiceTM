@@ -149,12 +149,11 @@ export default function MessagesScreen() {
   );
 
 
-  async function refreshConversations() {
+  const refreshConversations = useCallback(async () => {
     const data = await apiJson<Conversation[]>("/api/conversations");
-
     setConversations(data);
     return data;
-  }
+  }, []);
 
 
 const {
@@ -170,6 +169,7 @@ const {
   setChatMessages,
 });
 
+const getRealtimeWs = useCallback(() => wsRef.current, []);
 
 const {
   playingMessageId,
@@ -178,7 +178,7 @@ const {
 } = useChatAudio({
   activeConversationId: activeConversation?.id ?? null,
   myUserId,
-  getWs: () => wsRef.current,
+  getWs: getRealtimeWs, 
   setChatMessages,
 });
 
@@ -195,56 +195,11 @@ const {
   screenWidth,
 });
 
-function clearMessagesRouteParams() {
-  router.replace("/messages");
-}
-
-useEffect(() => {
-  if (!openConversationId) return;
-  if (loading) return;
-  if (handledOpenConversationIdRef.current === openConversationId) return;
-
-
-  handledOpenConversationIdRef.current = openConversationId;
-
-
-  openConversationById(openConversationId)
-  .then(() => {
-    clearMessagesRouteParams();
-  })
-  .catch((err) => {
-    console.warn("Failed to open conversation from route param:", err);
-  });
-}, [openConversationId, loading, router]);
-
-useEffect(() => {
-  if (!openConversationId) {
-    handledOpenConversationIdRef.current = null;
-  }
-}, [openConversationId]);
-
-  useEffect(() => {
-  if (!openProfile) return;
-  if (loading) return;
-  if (handledOpenProfileRef.current === openProfile) return;
-
-
-  handledOpenProfileRef.current = openProfile;
-
-
-  requestOpenProfileModal();
-  clearMessagesRouteParams();
-}, [openProfile, loading, router]);
-
-
 useEffect(() => {
   if (!openProfile) {
     handledOpenProfileRef.current = null;
   }
 }, [openProfile]);
-
-
-
 
   useEffect(() => {
     getUserId()
@@ -256,7 +211,6 @@ useEffect(() => {
   presenceClockRef.current = setInterval(() => {
     setNowMs(Date.now());
   }, 1000);
-
 
   return () => {
     if (presenceClockRef.current) clearInterval(presenceClockRef.current);
@@ -311,71 +265,26 @@ useEffect(() => {
   }, []);
 
 
-  async function openConversationById(conversationId: string) {
-    const data = await refreshConversations();
-    const convo =
-      data.find((c) => c.id === conversationId) ??
-      conversations.find((c) => c.id === conversationId);
+  const requestOpenProfileModal = useCallback(() => {
+  setOpenProfileSignal((prev) => prev + 1);
+}, []);
 
 
-    if (!convo) return;
+const requestCloseProfileModal = useCallback(() => {
+  setCloseProfileSignal((prev) => prev + 1);
+}, []);
 
 
-    const liveBubble = allBubbles.find(
-      (b) => b.conversation && b.conversation.id === conversationId
-    );
+const requestOpenRecentlyLeftModal = useCallback(() => {
+  setOpenRecentlyLeftSignal((prev) => prev + 1);
+}, []);
 
 
-    const openTarget: MovingBubble = liveBubble?.conversation
-      ? {
-          ...liveBubble.conversation,
-          size: liveBubble.size,
-          x: liveBubble.x,
-          y: liveBubble.y,
-          vx: liveBubble.vx,
-          vy: liveBubble.vy,
-        }
-      : {
-          ...convo,
-          size: 72,
-          x: 0,
-          y: 0,
-          vx: 0,
-          vy: 0,
-        };
-        
-    requestCloseProfileModal();
-    await stopCurrentAudio();
-    await handleBubblePress(openTarget);
-  };
-
-  function requestOpenProfileModal() {
-    setOpenProfileSignal((prev) => prev + 1);
-  }
-
-  function requestCloseProfileModal() {
-    setCloseProfileSignal((prev) => prev +1);
-  }
-
-  function requestOpenRecentlyLeftModal() {
-    setOpenRecentlyLeftSignal((prev) => prev + 1);
-  }
-
-  function requestRefreshProfileInbox() {
+const requestRefreshProfileInbox = useCallback(() => {
   setRefreshProfileInboxSignal((prev) => prev + 1);
-}
-
-const refreshProfileInbox = useCallback(() => {
-  requestRefreshProfileInbox();
-},[]);
+}, []);
 
 
-const submitConversationRequest = useConversationRequestFlow({
-  t,
-  openConversation: openConversationById,
-  openProfile: requestOpenProfileModal,
-  refreshAll: refreshProfileInbox,
-});
 
   function handleYapPress() {
     if (Platform.OS === "ios") {
@@ -443,11 +352,10 @@ const submitConversationRequest = useConversationRequestFlow({
   }
 
 
-  async function handleBubblePress(bubble: MovingBubble) {
+  const handleBubblePress = useCallback(async (bubble: MovingBubble) => {
     setActiveConversation(bubble);
     setChatMessages([]);
     setDraft("");
-
 
     try {
       const raw = await apiJson<any[]>(`/api/conversations/${bubble.id}/messages`);
@@ -464,15 +372,99 @@ const submitConversationRequest = useConversationRequestFlow({
       .filter((m) => !m.isMine && !!m.audioUrl && !m.listenedAt)
       .pop();
 
-
-
   if (newestUnread) playMessageAudio(newestUnread, bubble.id, true);
   } catch (err) {
       console.warn("Failed to load messages:", err);
       setChatMessages([]);
     }
-  }
+  }, [myUserId, playMessageAudio]);
 
+  const openConversationById = useCallback(async (conversationId: string) => {
+    const data = await refreshConversations();
+    const convo =
+      data.find((c) => c.id === conversationId) ??
+      conversations.find((c) => c.id === conversationId);
+
+
+    if (!convo) return;
+
+
+    const liveBubble = allBubbles.find(
+      (b) => b.conversation && b.conversation.id === conversationId
+    );
+
+
+    const openTarget: MovingBubble = liveBubble?.conversation
+      ? {
+          ...liveBubble.conversation,
+          size: liveBubble.size,
+          x: liveBubble.x,
+          y: liveBubble.y,
+          vx: liveBubble.vx,
+          vy: liveBubble.vy,
+        }
+      : {
+          ...convo,
+          size: 72,
+          x: 0,
+          y: 0,
+          vx: 0,
+          vy: 0,
+        };
+        
+    requestCloseProfileModal();
+    await stopCurrentAudio();
+    await handleBubblePress(openTarget);
+  }, [
+    allBubbles,
+    conversations,
+    refreshConversations,
+    handleBubblePress,
+    stopCurrentAudio,
+  ]);
+
+  const submitConversationRequest = useConversationRequestFlow({
+  t,
+  openConversation: openConversationById,
+  openProfile: requestOpenProfileModal,
+  refreshAll: requestRefreshProfileInbox, 
+});
+
+useEffect(() => {
+  if (!openConversationId) {
+    handledOpenConversationIdRef.current = null;
+  }
+}, [openConversationId]);
+
+  useEffect(() => {
+  if (!openProfile) return;
+  if (loading) return;
+  if (handledOpenProfileRef.current === openProfile) return;
+
+  handledOpenProfileRef.current = openProfile;
+
+  requestOpenProfileModal();
+  router.replace("/messages");
+}, [openProfile, loading, requestOpenProfileModal, router]);
+
+
+useEffect(() => {
+  if (!openConversationId) return;
+  if (loading) return;
+  if (handledOpenConversationIdRef.current === openConversationId) return;
+
+
+  handledOpenConversationIdRef.current = openConversationId;
+
+
+  openConversationById(openConversationId)
+  .then(() => {
+    router.replace("/messages");
+  })
+  .catch((err) => {
+    console.warn("Failed to open conversation from route param:", err);
+  });
+}, [openConversationId, loading, openConversationById, router]);
 
   async function handleSend() {
     if (!draft.trim() || !activeConversation) return;

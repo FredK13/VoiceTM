@@ -23,7 +23,7 @@
     "errorTitle": "Error",
     "currentRequestPending": "Current request pending.",
     "requestWaitingTitle": "Request waiting",
-    "requestWaitingBody": "You already have a request. Accept / ignore it in your Profile.",
+    "requestWaitingBody": "Accept / ignore it in your Profile.",
     "open": "Open",
     "cancel": "Cancel",
     "enterEmailToRequest": "Enter their email to send a chat request:",
@@ -88,7 +88,7 @@
     "deny": "Deny",
     "receiptPosted": "posted",
     "receiptListened": "listened",
-    "receiptIndicator": "yappin...",
+    "receiptIndicator": "yapping...",
     "unknownUser": "Unknown",
     "rejoinMessageSentBody": "{{username}} has left, request sent."
   },

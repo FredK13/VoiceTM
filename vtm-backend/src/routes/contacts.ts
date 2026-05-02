@@ -4,7 +4,7 @@ import { requireAuth, requireUserId } from "../middleware/requireAuth";
 import rateLimit from "express-rate-limit";
 import { normalizeEmail, normalizeUsername, hashPIIForLookup } from "../utils/piiCrypto";
 import { signAvatarGetUrl } from "../r2ImagesClient";
-
+import { publishRealtimeToUsers } from "../utils/realtimeFanout";
 
 const router = Router();
 router.use(requireAuth);
@@ -375,20 +375,46 @@ router.post("/request", contactInviteLimiter, async (req, res, next) => {
       }
 
 
-      await prisma.contactInvite.update({
+      const updatedInvite = await prisma.contactInvite.update({
         where: { id: existingInvite.id },
         data: { status: "PENDING" },
+        select: {
+          id: true,
+          fromUserId: true,
+          toUserId: true,
+        },
       });
+
+      await publishRealtimeToUsers({
+        userIds: [updatedInvite.fromUserId, updatedInvite.toUserId],
+        event: {
+          type: "notif:contact_request_created",
+          inviteId: updatedInvite.id,
+          fromUserId: updatedInvite.fromUserId,
+          toUserId: updatedInvite.toUserId,
+        },
+      });
+    
+
       return res.status(201).json({ status: "CREATED" as const });
     }
 
 
-    await prisma.contactInvite.create({
+    const createdInvite = await prisma.contactInvite.create({
       data: { fromUserId, toUserId: toUser.id, status: "PENDING" },
-      select: { id: true },
+      select: { id: true, fromUserId: true, toUserId: true, },
     });
 
-
+    await publishRealtimeToUsers({
+      userIds: [createdInvite.fromUserId, createdInvite.toUserId],
+      event: {
+        type: "notif:contact_request_created",
+        inviteId: createdInvite.id,
+        fromUserId: createdInvite.fromUserId,
+        toUserId: createdInvite.toUserId,
+      },
+    });
+  
     return res.status(201).json({ status: "CREATED" as const });
   } catch (err) {
     next(err);
@@ -525,6 +551,16 @@ router.post("/requests/:inviteId/accept", contactDecisionLimiter, async (req, re
       }),
     ]);
 
+    await publishRealtimeToUsers({
+      userIds: [invite.fromUserId, invite.toUserId],
+      event: {
+        type: "notif:contact_request_accepted",
+        inviteId: invite.id,
+        fromUserId: invite.fromUserId,
+        toUserId: invite.toUserId,
+      },
+    });
+
 
     return res.json({ ok: true });
   } catch (err) {
@@ -545,7 +581,11 @@ router.post("/requests/:inviteId/reject", contactDecisionLimiter, async (req, re
 
     const invite = await prisma.contactInvite.findFirst({
       where: { id: inviteId, toUserId: userId, status: "PENDING" },
-      select: { id: true },
+      select: { 
+        id: true,
+        fromUserId: true,
+        toUserId: true,
+      },
     });
 
 
@@ -557,6 +597,15 @@ router.post("/requests/:inviteId/reject", contactDecisionLimiter, async (req, re
       data: { status: "REJECTED" },
     });
 
+    await publishRealtimeToUsers({
+      userIds: [invite.fromUserId, invite.toUserId],
+      event: {
+        type: "notif:contact_request_rejected",
+        inviteId: invite.id,
+        fromUserId: invite.fromUserId,
+        toUserId: invite.toUserId,
+      },
+    });
 
     return res.json({ ok: true });
   } catch (err) {
@@ -564,11 +613,12 @@ router.post("/requests/:inviteId/reject", contactDecisionLimiter, async (req, re
   }
 });
 
+
 /**
  * POST /api/contacts/requests/:id/cancel
  * Cancel my own outgoing pending contact invite
  */
-router.post("/requests/:id/cancel", requireAuth, contactDecisionLimiter, async (req, res, next) => {
+router.post("/requests/:id/cancel", contactDecisionLimiter, async (req, res, next) => {
   try {
     const userId = requireUserId(req);
     const id = String((req.params as any).id || "").trim();
@@ -581,7 +631,11 @@ router.post("/requests/:id/cancel", requireAuth, contactDecisionLimiter, async (
         fromUserId: userId,
         status: "PENDING",
       },
-      select: { id: true },
+      select: { 
+        id: true,
+        fromUserId: true,
+        toUserId: true,
+      },
     });
 
 
@@ -596,6 +650,15 @@ router.post("/requests/:id/cancel", requireAuth, contactDecisionLimiter, async (
       data: { status: "CANCELLED" },
     });
 
+    await publishRealtimeToUsers({
+      userIds: [invite.fromUserId, invite.toUserId],
+      event: {
+        type: "notif:contact_request_cancelled",
+        inviteId: invite.id,
+        fromUserId: invite.fromUserId,
+        toUserId: invite.toUserId,
+      },
+    });
 
     return res.json({ ok: true });
   } catch (err) {

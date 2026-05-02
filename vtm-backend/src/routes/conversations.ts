@@ -6,6 +6,7 @@ import { synthesizeMessageAudio } from "../voice/synthesizeMessageAudio";
 import { deleteObjectFromR2 } from "../r2Client";
 import { hashPIIForLookup, normalizeEmail, normalizeUsername } from "../utils/piiCrypto";
 import { signAvatarGetUrl } from "../r2ImagesClient";
+import { publishRealtimeToUsers } from "../utils/realtimeFanout";
 import rateLimit from "express-rate-limit";
 
 
@@ -265,20 +266,32 @@ if (activeMembers.length > 0) {
     activeMembers.map((m) => m.userId).find((id) => id !== fromUserId) ?? activeMembers[0].userId;
 
 
-  // ✅ If it's already pending, don't "resend" — just tell the client it's sent.
-  const existingPending = await prisma.conversationRejoinInvite.findUnique({
-    where: { conversationId_toUserId: { conversationId: convoId, toUserId } },
-    select: { status: true },
-  });
+  const existingPendingRejoin = await prisma.conversationRejoinInvite.findFirst({
+  where: {
+    conversationId: convoId,
+    status: "PENDING",
+  },
+  select: {
+    id: true,
+    fromUserId: true,
+    toUserId: true,
+    conversationId: true,
+  },
+});
 
-
-  if (existingPending?.status === "PENDING") {
-    return res.status(200).json({ status: "REJOIN_SENT" as const });
-    // (optional later: return { status: "REJOIN_ALREADY" as const } if you add that enum)
+if (existingPendingRejoin) {
+  if (existingPendingRejoin.toUserId === fromUserId) {
+    return res.status(200).json({ status: "INCOMING_PENDING" as const });
   }
 
+  if (existingPendingRejoin.fromUserId === fromUserId) {
+    return res.status(200).json({ status: "REJOIN_SENT" as const });
+  }
 
-  await prisma.conversationRejoinInvite.upsert({
+  return res.status(200).json({ status: "REJOIN_SENT" as const });
+}
+
+  const rejoinInvite = await prisma.conversationRejoinInvite.upsert({
     where: { conversationId_toUserId: { conversationId: convoId, toUserId } },
     create: {
       conversationId: convoId,
@@ -291,16 +304,30 @@ if (activeMembers.length > 0) {
       status: "PENDING",
       updatedAt: new Date(),
     },
+    select: {
+      id: true,
+      conversationId: true,
+      fromUserId: true,
+      toUserId: true,
+    }
   });
 
+  await publishRealtimeToUsers({
+    userIds: [rejoinInvite.fromUserId, rejoinInvite.toUserId],
+    event: {
+      type: "notif:rejoin_request_created",
+      inviteId: rejoinInvite.id,
+      conversationId: rejoinInvite.conversationId,
+      fromUserId: rejoinInvite.fromUserId,
+      toUserId: rejoinInvite.toUserId,
+    },
+  });
 
   return res.status(200).json({ status: "REJOIN_SENT" as const });
 }
 
-
   // else: no active members -> continue to normal invite code below
 }
-
 
     // ✅ If THEY already invited ME and it's still pending, don't allow reverse invite
     const reversePending = await prisma.conversationInvite.findUnique({
@@ -328,23 +355,42 @@ if (activeMembers.length > 0) {
 
 
       // REJECTED (or any non-pending): flip back to PENDING = "resend"
-      await prisma.conversationInvite.update({
+      const updatedInvite = await prisma.conversationInvite.update({
         where: { id: existingInvite.id },
         data: { status: "PENDING", conversationId: null },
+        select: { id: true, fromUserId: true, toUserId: true },
       });
 
+      await publishRealtimeToUsers({
+        userIds: [updatedInvite.fromUserId, updatedInvite.toUserId],
+        event: {
+          type: "notif:chat_request_created",
+          inviteId: updatedInvite.id,
+          fromUserId: updatedInvite.fromUserId,
+          toUserId: updatedInvite.toUserId,
+      },
+      });
 
       return res.status(201).json({ status: "CREATED" as const });
     }
 
-
-    await prisma.conversationInvite.create({
+    const createdInvite = await prisma.conversationInvite.create({
       data: {
-        fromUserId,
-        toUserId: toUser.id,
-        status: "PENDING",
+      fromUserId,
+      toUserId: toUser.id,
+      status: "PENDING",
+    },
+    select: { id: true, fromUserId: true, toUserId: true },
+  });
+
+    await publishRealtimeToUsers({
+      userIds: [createdInvite.fromUserId, createdInvite.toUserId],
+      event: {
+        type: "notif:chat_request_created",
+        inviteId: createdInvite.id,
+        fromUserId: createdInvite.fromUserId,
+        toUserId: createdInvite.toUserId,
       },
-      select: { id: true },
     });
 
 
@@ -507,6 +553,26 @@ router.post("/requests/:inviteId/accept", requireAuth, convoDecisionLimiter, asy
         data: { hiddenAt: null, leftAt: null },
       });
 
+      await publishRealtimeToUsers({
+        userIds: [invite.fromUserId, invite.toUserId],
+        event: {
+          type: "notif:chat_request_accepted",
+          inviteId: invite.id,
+          conversationId: existingConversation.id,
+          fromUserId: invite.fromUserId,
+          toUserId: invite.toUserId,
+        },
+      });
+
+
+      await publishRealtimeToUsers({
+        userIds: [invite.fromUserId, invite.toUserId],
+        event: {
+          type: "notif:conversation_created",
+          conversationId: existingConversation.id,
+          userIds: [invite.fromUserId, invite.toUserId],
+        },
+      });
 
       return res.json({ ok: true, conversationId: existingConversation.id });
     }
@@ -553,6 +619,25 @@ router.post("/requests/:inviteId/accept", requireAuth, convoDecisionLimiter, asy
       return conversation;
     });
 
+    await publishRealtimeToUsers({
+      userIds: [invite.fromUserId, invite.toUserId],
+      event: {
+        type: "notif:chat_request_accepted",
+        inviteId: invite.id,
+        conversationId: created.id,
+        fromUserId: invite.fromUserId,
+        toUserId: invite.toUserId,
+      },
+    });
+
+    await publishRealtimeToUsers({
+      userIds: [invite.fromUserId, invite.toUserId],
+      event: {
+        type: "notif:conversation_created",
+        conversationId: created.id,
+        userIds: [invite.fromUserId, invite.toUserId],
+      },
+    });
 
     res.json({ ok: true, conversationId: created.id });
   } catch (err) {
@@ -573,7 +658,7 @@ router.post("/requests/:inviteId/reject", requireAuth, convoDecisionLimiter, asy
 
     const invite = await prisma.conversationInvite.findFirst({
       where: { id: inviteId, toUserId: userId, status: "PENDING" },
-      select: { id: true },
+      select: { id: true, fromUserId: true, toUserId: true },
     });
 
 
@@ -585,6 +670,15 @@ router.post("/requests/:inviteId/reject", requireAuth, convoDecisionLimiter, asy
       data: { status: "REJECTED" },
     });
 
+    await publishRealtimeToUsers({
+      userIds: [invite.fromUserId, invite.toUserId],
+      event: {
+        type: "notif:chat_request_rejected",
+        inviteId: invite.id,
+        fromUserId: invite.fromUserId,
+        toUserId: invite.toUserId,
+      },
+    });
 
     res.json({ ok: true });
   } catch (err) {
@@ -611,7 +705,7 @@ router.post("/requests/:inviteId/cancel", requireAuth, convoDecisionLimiter, asy
         fromUserId: userId,
         status: "PENDING",
       },
-      select: { id: true },
+      select: { id: true, fromUserId: true, toUserId: true },
     });
 
 
@@ -631,6 +725,15 @@ router.post("/requests/:inviteId/cancel", requireAuth, convoDecisionLimiter, asy
       },
     });
 
+    await publishRealtimeToUsers({
+      userIds: [invite.fromUserId, invite.toUserId],
+      event: {
+        type: "notif:chat_request_cancelled",
+        inviteId: invite.id,
+        fromUserId: invite.fromUserId,
+        toUserId: invite.toUserId,
+      },
+    });
 
     return res.json({ ok: true });
   } catch (err) {
@@ -675,7 +778,6 @@ router.get("/:id/messages", requireAuth, async (req, res, next) => {
         listenedAt: true,
       },
     });
-
 
     res.json(messages);
   } catch (err) {
@@ -791,6 +893,12 @@ if (pendingRejoin) {
       },
     });
 
+    const rejoinInvitesToPublish: {
+      id: string;
+      conversationId: string;
+      fromUserId: string;
+      toUserId: string;
+    }[] = [];
 
     await prisma.$transaction(async (tx) => {
       await tx.conversation.update({
@@ -798,17 +906,15 @@ if (pendingRejoin) {
         data: { updatedAt: new Date() },
       });
 
-
       // Only unhide ACTIVE members
       await tx.conversationMember.updateMany({
         where: { conversationId, leftAt: null },
         data: { hiddenAt: null },
       });
 
-
       // If anyone left, create a pending rejoin invite for them
       for (const lm of leftMembers) {
-        await tx.conversationRejoinInvite.upsert({
+        const rejoinInvite = await tx.conversationRejoinInvite.upsert({
           where: {
             conversationId_toUserId: { conversationId, toUserId: lm.userId },
           },
@@ -823,10 +929,30 @@ if (pendingRejoin) {
             status: "PENDING",
             updatedAt: new Date(),
           },
+          select: {
+            id: true,
+            conversationId: true,
+            fromUserId: true,
+            toUserId: true,
+          },
         });
+
+        rejoinInvitesToPublish.push(rejoinInvite);
       }
     });
 
+    for (const inv of rejoinInvitesToPublish) {
+      await publishRealtimeToUsers({
+        userIds: [inv.fromUserId, inv.toUserId],
+        event: {
+          type: "notif:rejoin_request_created",
+          inviteId: inv.id,
+          conversationId: inv.conversationId,
+          fromUserId: inv.fromUserId,
+          toUserId: inv.toUserId,
+      },
+    });
+  }
 
     const finalMessage = await prisma.message.findUnique({
       where: { id: baseMessage.id },
@@ -949,6 +1075,14 @@ router.delete("/:id", requireAuth, async (req, res, next) => {
       data: { hiddenAt: new Date(), leftAt: new Date() },
     });
 
+    await publishRealtimeToUsers({
+      userIds: [userId],
+      event: {
+        type: "notif:conversation_left",
+        conversationId,
+        userId,
+      },
+    }); 
 
     // ✅ if anyone is still active, keep conversation
     const activeCount = await prisma.conversationMember.count({

@@ -7,7 +7,6 @@ import useProfileAvatar from "../hooks/useProfileAvatar";
 import useProfileInbox from "../hooks/useProfileInbox";
 import useRefreshOnFocus from "../hooks/useRefreshOnFocus";
 import useConversationRequestFlow from "../hooks/useConversationRequestFlow";
-import { apiFetch } from "../../lib/api";
 import type {
   IncomingContactInvite,
   IncomingInvite,
@@ -15,6 +14,10 @@ import type {
 } from "../../lib/types";
 import type { OutgoingNotif } from "../hooks/useProfileInbox";
 import RecentlyLeftModal from "./RecentlyLeftModal";
+import { apiFetch } from "../../lib/api";
+import { usePresence } from "../../lib/presence";
+import { isNotificationRealtimeEvent } from "../../lib/realtimeEvents";
+
 
 
 type Props = {
@@ -78,8 +81,17 @@ export default function ProfileEntryPoint({
     refreshMe,
   });
 
+  const { subscribe } = usePresence();
 
   useRefreshOnFocus(refreshAllProfileInbox);
+
+    useEffect(() => {
+      return subscribe((evt) => {
+        if (!isNotificationRealtimeEvent(evt)) return;
+
+        refreshAllProfileInbox().catch(() => {});
+      });
+    }, [subscribe, refreshAllProfileInbox]);
 
     const [recentlyLeftOpen, setRecentlyLeftOpen] = useState(false);
     const lastOpenProfileSignalRef = useRef<number>(0);

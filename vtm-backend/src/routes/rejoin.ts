@@ -4,6 +4,7 @@ import prisma from "../prismaClient";
 import { requireAuth, requireUserId } from "../middleware/requireAuth";
 import rateLimit from "express-rate-limit";
 import { signAvatarGetUrl } from "../r2ImagesClient";
+import { publishRealtimeToUsers } from "../utils/realtimeFanout";
 
 
 const router = Router();
@@ -236,8 +237,6 @@ router.post("/requests/:id/accept", requireAuth, rejoinLimiter, async (req, res,
         where: { id: inv.id },
         data: { status: "ACCEPTED" },
       });
-
-
       await tx.conversationMember.upsert({
         where: {
           conversationId_userId: {
@@ -257,7 +256,6 @@ router.post("/requests/:id/accept", requireAuth, rejoinLimiter, async (req, res,
         },
       });
 
-
       await tx.conversationMember.updateMany({
         where: {
           conversationId: inv.conversationId,
@@ -267,6 +265,25 @@ router.post("/requests/:id/accept", requireAuth, rejoinLimiter, async (req, res,
       });
     });
 
+    await publishRealtimeToUsers({
+      userIds: [inv.fromUserId, inv.toUserId],
+      event: {
+        type: "notif:rejoin_request_accepted",
+        inviteId: inv.id,
+        conversationId: inv.conversationId,
+        fromUserId: inv.fromUserId,
+        toUserId: inv.toUserId,
+      },
+    });
+
+    await publishRealtimeToUsers({
+      userIds: [inv.fromUserId, inv.toUserId],
+      event: {
+        type: "notif:conversation_created",
+        conversationId: inv.conversationId,
+        userIds: [inv.fromUserId, inv.toUserId],
+      },
+    });
 
     return res.json({ ok: true, conversationId: inv.conversationId });
   } catch (e) {
@@ -285,7 +302,12 @@ router.post("/requests/:id/reject", requireAuth, rejoinLimiter, async (req, res,
 
     const inv = await prisma.conversationRejoinInvite.findFirst({
       where: { id, toUserId: userId, status: "PENDING" },
-      select: { id: true },
+      select: { 
+        id: true,
+        conversationId: true,
+        fromUserId: true,
+        toUserId: true,
+      },
     });
     if (!inv) return res.status(404).json({ error: "Invite not found" });
 
@@ -295,6 +317,16 @@ router.post("/requests/:id/reject", requireAuth, rejoinLimiter, async (req, res,
       data: { status: "REJECTED" },
     });
 
+    await publishRealtimeToUsers({
+      userIds: [inv.fromUserId, inv.toUserId],
+      event: {
+        type: "notif:rejoin_request_rejected",
+        inviteId: inv.id,
+        conversationId: inv.conversationId,
+        fromUserId: inv.fromUserId,
+        toUserId: inv.toUserId,
+      },
+    });                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      
 
     return res.json({ ok: true });
   } catch (e) {
@@ -316,7 +348,12 @@ router.post("/requests/:id/cancel", requireAuth, rejoinLimiter, async (req, res,
         fromUserId: userId,
         status: "PENDING",
       },
-      select: { id: true },
+      select: { 
+        id: true,
+        conversationId: true,
+        fromUserId: true,
+        toUserId: true,
+       },
     });
 
 
@@ -331,6 +368,16 @@ router.post("/requests/:id/cancel", requireAuth, rejoinLimiter, async (req, res,
       data: { status: "CANCELLED" },
     });
 
+    await publishRealtimeToUsers({
+      userIds: [inv.fromUserId, inv.toUserId],
+      event: {
+        type: "notif:rejoin_request_cancelled",
+        inviteId: inv.id,
+        conversationId: inv.conversationId,
+        fromUserId: inv.fromUserId,
+        toUserId: inv.toUserId,
+      },
+    });                                                      
 
     return res.json({ ok: true });
   } catch (e) {
